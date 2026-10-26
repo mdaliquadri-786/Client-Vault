@@ -80,6 +80,12 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
             <span className="font-mono tabular-nums">{formatDate(file.uploaded_at)}</span>
           </div>
           <div className="flex justify-between text-slate-600">
+            <span className="text-slate-500">Storage Location:</span>
+            <span className="font-mono text-[11px] text-slate-500 truncate max-w-[220px]">
+              client-vault-files/{file.project_id}/{file.id}_{file.name}
+            </span>
+          </div>
+          <div className="flex justify-between text-slate-600">
             <span className="text-slate-500">Uploaded By:</span>
             <span className="font-medium text-slate-800">{file.uploader_name}</span>
           </div>

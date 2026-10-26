@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS public.files (
 
 CREATE INDEX IF NOT EXISTS idx_files_project_id ON public.files(project_id);
 CREATE INDEX IF NOT EXISTS idx_files_user_id ON public.files(user_id);
+CREATE INDEX IF NOT EXISTS idx_files_storage_path ON public.files(storage_path);
 CREATE INDEX IF NOT EXISTS idx_files_created_at ON public.files(created_at DESC);
 
 -- Enable RLS on all tables

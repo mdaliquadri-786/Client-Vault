@@ -8,6 +8,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signup: (email: string, password: string, name: string, role: 'freelancer' | 'client') => Promise<{ success: boolean; error?: string }>;
+  signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   switchRole: (role: 'freelancer' | 'client') => void;
   demoLogin: (role: 'freelancer' | 'client') => void;
@@ -202,6 +203,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: true };
   };
 
+  const signInWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
+    const supabase = getSupabaseClient();
+
+    if (supabase) {
+      try {
+        const origin = typeof window !== 'undefined' ? window.location.origin : '';
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: `${origin}/auth/callback?next=/dashboard/projects`,
+          },
+        });
+
+        if (error) {
+          setIsLoading(false);
+          return { success: false, error: error.message };
+        }
+
+        if (data?.url) {
+          window.location.href = data.url;
+          return { success: true };
+        }
+      } catch (err: any) {
+        setIsLoading(false);
+        return { success: false, error: err.message };
+      }
+    }
+
+    // Interactive preview fallback: simulate authenticated Google login
+    await new Promise((r) => setTimeout(r, 600));
+    const googleUser: VaultUser = {
+      id: 'usr-google-3910',
+      email: 'alex.rivera.design@gmail.com',
+      name: 'Alex Rivera (Google)',
+      role: 'freelancer',
+      company: 'Rivera Creative Studio',
+      avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=128&q=80',
+    };
+    setUser(googleUser);
+    localStorage.setItem('cv_current_user', JSON.stringify(googleUser));
+    setIsLoading(false);
+    return { success: true };
+  };
+
   const logout = () => {
     const supabase = getSupabaseClient();
     if (supabase) {
@@ -235,6 +281,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         login,
         signup,
+        signInWithGoogle,
         logout,
         switchRole,
         demoLogin,

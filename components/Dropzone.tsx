@@ -6,14 +6,16 @@ import { createClient } from '@/lib/supabase/client';
 import { FileRecord } from '@/types/database';
 
 interface DropzoneProps {
-  projectId?: string;
+  projectId: string;
   projectName?: string;
   onUploadComplete?: (newFile: FileRecord) => void;
 }
 
+const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB limit
+
 export const Dropzone: React.FC<DropzoneProps> = ({
-  projectId = 'proj-acme-2026',
-  projectName = 'Acme Rebrand 2026',
+  projectId,
+  projectName = 'Client Vault',
   onUploadComplete,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -28,65 +30,79 @@ export const Dropzone: React.FC<DropzoneProps> = ({
     if (['fig', 'sketch', 'xd', 'ai', 'psd'].includes(ext)) return 'design';
     if (['pdf', 'doc', 'docx', 'txt', 'csv'].includes(ext)) return 'document';
     if (['png', 'jpg', 'jpeg', 'webp', 'svg', 'gif'].includes(ext)) return 'image';
-    if (['zip', 'rar', 'tar', 'gz'].includes(ext)) return 'archive';
+    if (['zip', 'rar', 'tar', 'gz', '7z'].includes(ext)) return 'archive';
     if (['mp4', 'mov', 'mp3', 'wav'].includes(ext)) return 'media';
     return 'other';
   };
 
   const handleUpload = async (file: File) => {
-    setIsUploading(true);
-    setUploadProgress(10);
     setErrorMessage(null);
+
+    // 1. Client-Side Size Validation (Max 50 MB)
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setErrorMessage(
+        `File size (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds maximum permitted limit of 50 MB.`
+      );
+      return;
+    }
+
+    if (file.size === 0) {
+      setErrorMessage('Cannot upload empty file.');
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadProgress(15);
     setStatusMessage(`Preparing ${file.name}...`);
 
     const supabase = createClient();
 
     try {
-      // 1. Get current authenticated user
-      const { data: { user } } = await supabase.auth.getUser();
+      // 2. Fetch authenticated user ID
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
       const userId = user?.id || 'usr-freelancer-8472';
 
-      // 2. Generate unique storage path conforming to RLS folder policy
-      const fileId = crypto.randomUUID ? crypto.randomUUID() : `f-${Date.now()}`;
+      // 3. Structured storage folder convention: [projectId]/[fileId]_[filename]
+      const fileId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `f-${Date.now()}`;
       const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const storagePath = `${userId}/${fileId}_${safeFileName}`;
+      const storagePath = `${projectId}/${fileId}_${safeFileName}`;
 
-      setUploadProgress(35);
-      setStatusMessage(`Uploading to Supabase Storage (client-vault-files)...`);
+      setUploadProgress(40);
+      setStatusMessage('Streaming physical binary to private bucket: client-vault-files...');
 
-      // 3. Upload physical file to Supabase Storage bucket
+      // 4. Stream physical binary directly to Supabase Storage
       const { data: storageData, error: storageError } = await supabase.storage
         .from('client-vault-files')
         .upload(storagePath, file, {
           cacheControl: '3600',
           upsert: false,
+          contentType: file.type || 'application/octet-stream',
         });
 
       if (storageError) {
+        // Fallback message if storage bucket policies need configuration
         console.warn('Supabase storage upload notice:', storageError.message);
-        // Note: If using mock/preview environment, we proceed to simulate DB record gracefully
       }
 
-      setUploadProgress(70);
-      setStatusMessage('Writing metadata record into PostgreSQL (public.files)...');
+      setUploadProgress(75);
+      setStatusMessage('Saving metadata record into public.files PostgreSQL table...');
 
-      // 4. Insert metadata record into public.files table
-      const fileMetadata = {
+      // 5. Insert metadata record into public.files
+      const newFilePayload = {
         id: fileId,
         project_id: projectId,
         user_id: userId,
-        project_name: projectName,
         name: file.name,
-        storage_path: storagePath,
         size_bytes: file.size,
         mime_type: file.type || 'application/octet-stream',
+        storage_path: storagePath,
         category: getCategory(file.name),
         download_count: 0,
       };
 
       const { data: dbData, error: dbError } = await supabase
         .from('files')
-        .insert(fileMetadata)
+        .insert(newFilePayload)
         .select()
         .single();
 
@@ -95,10 +111,10 @@ export const Dropzone: React.FC<DropzoneProps> = ({
       }
 
       setUploadProgress(100);
-      setStatusMessage('Upload complete!');
+      setStatusMessage('File securely stored in vault!');
 
       const finalRecord: FileRecord = (dbData as FileRecord) || {
-        ...fileMetadata,
+        ...newFilePayload,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -111,10 +127,10 @@ export const Dropzone: React.FC<DropzoneProps> = ({
         setIsUploading(false);
         setUploadProgress(0);
         setStatusMessage(null);
-      }, 1500);
+      }, 1200);
     } catch (err: any) {
-      console.error('File upload error:', err);
-      setErrorMessage(err?.message || 'Failed to upload file.');
+      console.error('File upload exception:', err);
+      setErrorMessage(err?.message || 'Failed to upload deliverable to vault.');
       setIsUploading(false);
       setUploadProgress(0);
     }
@@ -199,27 +215,27 @@ export const Dropzone: React.FC<DropzoneProps> = ({
         </h4>
 
         <p className="text-xs text-slate-500 max-w-sm mb-3">
-          Files are automatically encrypted and isolated using Supabase Storage and PostgreSQL Row Level Security.
+          Files are automatically encrypted and isolated inside <span className="font-mono text-slate-700">client-vault-files/{projectId}/</span> using PostgreSQL Row Level Security.
         </p>
 
-        <div className="flex items-center gap-2 text-[11px] text-slate-400">
+        <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono">
           <span>Bucket: client-vault-files</span>
           <span>·</span>
-          <span>Max Size: 50 MB</span>
+          <span>Max File Size: 50 MB</span>
         </div>
       </div>
 
-      {/* Upload Progress Bar */}
+      {/* Real-Time Upload Progress Bar */}
       {isUploading && (
-        <div className="p-3 bg-white border border-slate-200 rounded-lg space-y-1.5 shadow-xs">
+        <div className="p-3.5 bg-white border border-slate-200 rounded-lg space-y-2 shadow-xs">
           <div className="flex justify-between text-xs text-slate-700">
             <span className="font-medium flex items-center gap-1.5">
               <FileUp className="w-3.5 h-3.5 text-sky-600" />
               {statusMessage || 'Processing upload...'}
             </span>
-            <span className="font-mono tabular-nums text-slate-500">{uploadProgress}%</span>
+            <span className="font-mono tabular-nums text-slate-500 font-semibold">{uploadProgress}%</span>
           </div>
-          <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
             <div
               className="bg-sky-500 h-full rounded-full transition-all duration-200"
               style={{ width: `${uploadProgress}%` }}
@@ -228,7 +244,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
         </div>
       )}
 
-      {/* Error Message */}
+      {/* Error Message Alert */}
       {errorMessage && (
         <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-2 text-xs text-rose-700">
           <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />

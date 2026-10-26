@@ -93,3 +93,9 @@ test('canUserDeleteFile simulates DELETE RLS policy strictly', () => {
   assert.equal(canUserDeleteFile(client, designerFile), false);
 });
 
+test('50MB boundary check conforms to storage bucket limit', () => {
+  const fiftyMB = 50 * 1024 * 1024;
+  assert.equal(validateFileUpload({ name: 'ok.zip', size: fiftyMB }).valid, true);
+  assert.equal(validateFileUpload({ name: 'oversize.zip', size: fiftyMB + 1 }).valid, false);
+});
+

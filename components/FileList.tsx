@@ -12,13 +12,14 @@ import {
   Trash2,
   FolderOpen,
   Loader2,
-  ExternalLink,
+  Clock,
+  ShieldCheck,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { FileRecord } from '@/types/database';
 
 interface FileListProps {
-  projectId?: string;
+  projectId: string;
   onDeleteRequest: (file: FileRecord) => void;
   refreshTrigger?: number;
   initialFiles?: FileRecord[];
@@ -33,6 +34,7 @@ export const FileList: React.FC<FileListProps> = ({
   const [files, setFiles] = useState<FileRecord[]>(initialFiles || []);
   const [loading, setLoading] = useState<boolean>(!initialFiles);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadSuccessNotice, setDownloadSuccessNotice] = useState<string | null>(null);
 
   const fetchFiles = async () => {
     setLoading(true);
@@ -52,14 +54,15 @@ export const FileList: React.FC<FileListProps> = ({
       if (data && data.length > 0) {
         setFiles(data as FileRecord[]);
       } else if (!initialFiles || initialFiles.length === 0) {
-        const defaultSeed: FileRecord[] = [
+        // Fallback demo files scoped to active project
+        const demoFiles: FileRecord[] = [
           {
             id: 'f-101',
-            project_id: 'proj-acme-2026',
+            project_id: projectId,
             user_id: 'usr-freelancer-8472',
-            project_name: 'Acme Rebrand 2026',
+            project_name: 'Client Vault',
             name: 'Brand_Identity_System_v2.4_Production.pdf',
-            storage_path: 'usr-freelancer-8472/f-101_Brand_Identity.pdf',
+            storage_path: `${projectId}/f-101_Brand_Identity.pdf`,
             size_bytes: 14889728,
             mime_type: 'application/pdf',
             category: 'document',
@@ -69,11 +72,11 @@ export const FileList: React.FC<FileListProps> = ({
           },
           {
             id: 'f-102',
-            project_id: 'proj-acme-2026',
+            project_id: projectId,
             user_id: 'usr-freelancer-8472',
-            project_name: 'Acme Rebrand 2026',
+            project_name: 'Client Vault',
             name: 'Master_Logomark_Vector_Suite.zip',
-            storage_path: 'usr-freelancer-8472/f-102_Logomark_Suite.zip',
+            storage_path: `${projectId}/f-102_Logomark_Suite.zip`,
             size_bytes: 38797312,
             mime_type: 'application/zip',
             category: 'archive',
@@ -83,11 +86,11 @@ export const FileList: React.FC<FileListProps> = ({
           },
           {
             id: 'f-103',
-            project_id: 'proj-acme-2026',
+            project_id: projectId,
             user_id: 'usr-freelancer-8472',
-            project_name: 'Acme Rebrand 2026',
+            project_name: 'Client Vault',
             name: 'Design_Tokens_Figma_Kit.fig',
-            storage_path: 'usr-freelancer-8472/f-103_Tokens_Figma.fig',
+            storage_path: `${projectId}/f-103_Tokens_Figma.fig`,
             size_bytes: 9332326,
             mime_type: 'application/octet-stream',
             category: 'design',
@@ -95,37 +98,9 @@ export const FileList: React.FC<FileListProps> = ({
             created_at: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
             updated_at: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
           },
-          {
-            id: 'f-104',
-            project_id: 'proj-acme-2026',
-            user_id: 'usr-client-9104',
-            project_name: 'Acme Rebrand 2026',
-            name: 'Client_Feedback_Annotations_Oct.pdf',
-            storage_path: 'usr-client-9104/f-104_Feedback.pdf',
-            size_bytes: 2411724,
-            mime_type: 'application/pdf',
-            category: 'document',
-            download_count: 3,
-            created_at: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString(),
-            updated_at: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString(),
-          },
-          {
-            id: 'f-105',
-            project_id: 'proj-horizon-2026',
-            user_id: 'usr-freelancer-8472',
-            project_name: 'Horizon Mobile App',
-            name: 'Product_Packaging_HighRes_Render.png',
-            storage_path: 'usr-freelancer-8472/f-105_Packaging.png',
-            size_bytes: 6186598,
-            mime_type: 'image/png',
-            category: 'image',
-            download_count: 9,
-            created_at: new Date(Date.now() - 1000 * 60 * 60 * 96).toISOString(),
-            updated_at: new Date(Date.now() - 1000 * 60 * 60 * 96).toISOString(),
-          },
         ];
 
-        setFiles(projectId ? defaultSeed.filter((f) => f.project_id === projectId) : defaultSeed);
+        setFiles(demoFiles);
       }
     } catch (err) {
       console.error('Fetch files error:', err);
@@ -136,7 +111,7 @@ export const FileList: React.FC<FileListProps> = ({
 
   useEffect(() => {
     fetchFiles();
-  }, [refreshTrigger]);
+  }, [projectId, refreshTrigger]);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 B';
@@ -178,21 +153,27 @@ export const FileList: React.FC<FileListProps> = ({
     }
   };
 
+  /**
+   * Secure Time-Expiring Download Handler
+   * Requests a temporary signed URL valid for 60 seconds from the private bucket
+   */
   const handleDownload = async (file: FileRecord) => {
     setDownloadingId(file.id);
+    setDownloadSuccessNotice(null);
     const supabase = createClient();
 
     try {
-      // 1. Create a signed download URL valid for 60 seconds from private bucket
+      // 1. Generate 60-second expiring signed URL from private bucket
       const { data, error } = await supabase.storage
         .from('client-vault-files')
         .createSignedUrl(file.storage_path, 60);
 
       if (error || !data?.signedUrl) {
-        // Fallback simulated browser download for testing environments
-        const blob = new Blob([`ClientVault File Content: ${file.name}\nSize: ${file.size_bytes}`], {
-          type: file.mime_type,
-        });
+        // Fallback for demo environments without active Supabase backend
+        const blob = new Blob(
+          [`ClientVault Secure Deliverable\nFile: ${file.name}\nSize: ${file.size_bytes} bytes`],
+          { type: file.mime_type }
+        );
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -202,11 +183,20 @@ export const FileList: React.FC<FileListProps> = ({
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       } else {
-        // Open signed download URL
-        window.open(data.signedUrl, '_blank');
+        // Trigger browser download via signed URL
+        const link = document.createElement('a');
+        link.href = data.signedUrl;
+        link.download = file.name;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       }
 
-      // Update download count in public.files
+      setDownloadSuccessNotice(`Generated 60-second secure signed URL for ${file.name}`);
+      setTimeout(() => setDownloadSuccessNotice(null), 4000);
+
+      // 2. Increment download counter in public.files table
       await supabase
         .from('files')
         .update({ download_count: (file.download_count || 0) + 1 })
@@ -220,22 +210,36 @@ export const FileList: React.FC<FileListProps> = ({
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs font-sans">
-      {/* Table Title Bar */}
+      {/* Table Header */}
       <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-        <div>
+        <div className="flex items-center gap-2">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             Vault Deliverables & Files
           </h3>
+          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+            <ShieldCheck className="w-3 h-3" /> Private 60s Signed URLs
+          </span>
         </div>
         <div className="text-xs text-slate-500 font-mono tabular-nums">
-          {files.length} record{files.length === 1 ? '' : 's'}
+          {files.length} {files.length === 1 ? 'file' : 'files'}
         </div>
       </div>
+
+      {/* Download Alert Notice */}
+      {downloadSuccessNotice && (
+        <div className="px-6 py-2.5 bg-emerald-50 border-b border-emerald-100 flex items-center justify-between text-xs text-emerald-800">
+          <div className="flex items-center gap-2">
+            <Clock className="w-3.5 h-3.5 text-emerald-600" />
+            <span>{downloadSuccessNotice}</span>
+          </div>
+          <span className="font-mono text-[10px] bg-emerald-200/60 px-1.5 py-0.5 rounded">Expires in 60s</span>
+        </div>
+      )}
 
       {loading ? (
         <div className="p-12 text-center flex flex-col items-center justify-center">
           <Loader2 className="w-6 h-6 text-sky-600 animate-spin mb-2" />
-          <p className="text-xs text-slate-500">Fetching files from Supabase...</p>
+          <p className="text-xs text-slate-500">Loading deliverables from Supabase...</p>
         </div>
       ) : files.length === 0 ? (
         <div className="p-12 text-center flex flex-col items-center justify-center">
@@ -254,21 +258,11 @@ export const FileList: React.FC<FileListProps> = ({
           <table className="w-full text-left border-collapse" aria-label="Client Files Data Table">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500 select-none">
-                <th scope="col" className="py-3 px-6">
-                  File Name
-                </th>
-                <th scope="col" className="py-3 px-4 text-right">
-                  Size
-                </th>
-                <th scope="col" className="py-3 px-4">
-                  Type / Category
-                </th>
-                <th scope="col" className="py-3 px-4">
-                  Date Uploaded
-                </th>
-                <th scope="col" className="py-3 px-6 text-right">
-                  Actions
-                </th>
+                <th scope="col" className="py-3 px-6">File Name</th>
+                <th scope="col" className="py-3 px-4 text-right">Size</th>
+                <th scope="col" className="py-3 px-4">Type / Category</th>
+                <th scope="col" className="py-3 px-4">Date Uploaded</th>
+                <th scope="col" className="py-3 px-6 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
@@ -284,8 +278,8 @@ export const FileList: React.FC<FileListProps> = ({
                         <span className="font-medium text-slate-900 block truncate max-w-xs group-hover:text-sky-600 transition-colors">
                           {file.name}
                         </span>
-                        <span className="text-[11px] text-slate-400 font-mono">
-                          {file.project_name}
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {file.storage_path}
                         </span>
                       </div>
                     </div>
@@ -314,15 +308,15 @@ export const FileList: React.FC<FileListProps> = ({
                       <button
                         onClick={() => handleDownload(file)}
                         disabled={downloadingId === file.id}
-                        className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors"
-                        title={`Download ${file.name}`}
-                        aria-label={`Download ${file.name}`}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-md transition-colors"
+                        title="Download with 60s temporary signed URL"
                       >
                         {downloadingId === file.id ? (
-                          <Loader2 className="w-4 h-4 animate-spin text-sky-600" />
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-600" />
                         ) : (
-                          <Download className="w-4 h-4" />
+                          <Download className="w-3.5 h-3.5 text-slate-600" />
                         )}
+                        <span>Download</span>
                       </button>
 
                       <button

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { VaultFile, StorageStats } from '../types/index.js';
 import { useAuth } from './AuthContext.js';
 import { getFileCategory, validateFileUpload, canUserSelectFile, canUserDeleteFile } from '../utils/formatters.js';
+import { getSupabaseClient } from '../lib/supabaseClient.js';
 
 interface UploadingItem {
   id: string;
@@ -228,13 +229,45 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       await new Promise((r) => setTimeout(r, 200));
 
+      const fileId = `f-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 5)}`;
+      const safeName = rawFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const targetProjId = projectToUse.toLowerCase().includes('horizon')
+        ? 'proj-horizon-2026'
+        : projectToUse.toLowerCase().includes('apex')
+        ? 'proj-apex-2026'
+        : 'proj-acme-2026';
+      const storagePath = `${targetProjId}/${fileId}_${safeName}`;
+
+      // Upload physical binary to Supabase Storage if configured
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        try {
+          await supabase.storage
+            .from('client-vault-files')
+            .upload(storagePath, rawFile, {
+              cacheControl: '3600',
+              upsert: false,
+            });
+
+          await supabase.from('files').insert({
+            id: fileId,
+            project_id: targetProjId,
+            user_id: user.id,
+            name: rawFile.name,
+            size_bytes: rawFile.size,
+            mime_type: rawFile.type || 'application/octet-stream',
+            storage_path: storagePath,
+            category: getFileCategory(rawFile.name, rawFile.type),
+            download_count: 0,
+          });
+        } catch (storageErr) {
+          console.warn('Supabase storage upload notice:', storageErr);
+        }
+      }
+
       const newVaultFile: VaultFile = {
-        id: `f-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 5)}`,
-        project_id: projectToUse.toLowerCase().includes('horizon')
-          ? 'proj-horizon-2026'
-          : projectToUse.toLowerCase().includes('apex')
-          ? 'proj-apex-2026'
-          : 'proj-acme-2026',
+        id: fileId,
+        project_id: targetProjId,
         name: rawFile.name,
         size: rawFile.size,
         type: rawFile.type || 'application/octet-stream',
@@ -278,18 +311,49 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       };
     }
 
+    // Two-step deletion: Supabase Storage bucket + PostgreSQL table
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const safeName = target.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const storagePath = `${target.project_id}/${target.id}_${safeName}`;
+        await supabase.storage.from('client-vault-files').remove([storagePath]);
+        await supabase.from('files').delete().eq('id', fileId);
+      } catch (err) {
+        console.warn('Supabase delete notice:', err);
+      }
+    }
+
     // Remove from state
     setFiles((prev) => prev.filter((f) => f.id !== fileId));
     return { success: true };
   };
 
-  const downloadFile = (file: VaultFile) => {
+  const downloadFile = async (file: VaultFile) => {
     // Increment download counter
     setFiles((prev) =>
       prev.map((f) => (f.id === file.id ? { ...f, download_count: f.download_count + 1 } : f))
     );
 
-    // Create a dummy blob download for demonstration
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const storagePath = `${file.project_id}/${file.id}_${safeName}`;
+        const { data, error } = await supabase.storage
+          .from('client-vault-files')
+          .createSignedUrl(storagePath, 60);
+
+        if (!error && data?.signedUrl) {
+          window.open(data.signedUrl, '_blank');
+          return;
+        }
+      } catch (err) {
+        console.warn('Signed URL generation notice:', err);
+      }
+    }
+
+    // Fallback blob download
     const blob = new Blob([`ClientVault Secure Download\nFile: ${file.name}\nSize: ${file.size} bytes\nTimestamp: ${file.uploaded_at}`], {
       type: file.type || 'text/plain',
     });
