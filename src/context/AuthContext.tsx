@@ -7,138 +7,158 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  signup: (email: string, password: string, name: string, role: 'freelancer' | 'client') => Promise<{ success: boolean; error?: string }>;
+  signup: (email: string, password: string, name: string, role?: 'freelancer' | 'client') => Promise<{ success: boolean; error?: string }>;
   signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
-  switchRole: (role: 'freelancer' | 'client') => void;
-  demoLogin: (role: 'freelancer' | 'client') => void;
 }
-
-const DEMO_FREELANCER: VaultUser = {
-  id: 'usr-freelancer-8472',
-  email: 'elena.designer@studioflow.design',
-  name: 'Elena Rostova',
-  role: 'freelancer',
-  company: 'Studio Flow Creative',
-  avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=128&q=80',
-};
-
-const DEMO_CLIENT: VaultUser = {
-  id: 'usr-client-9104',
-  email: 'marcus@acmecorp.com',
-  name: 'Marcus Vance',
-  role: 'client',
-  company: 'Acme Corporation',
-  avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=128&q=80',
-};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<VaultUser | null>(DEMO_FREELANCER);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [user, setUser] = useState<VaultUser | null>(null);
+  // isLoading only guards initial session resolution, never form submissions
+  const [isInitializing, setIsInitializing] = useState<boolean>(true);
 
-  // Restore stored session or listen to Supabase auth state if configured
+  // Restore session from Supabase Auth or local storage
   useEffect(() => {
+    let isMounted = true;
     const supabase = getSupabaseClient();
 
     if (supabase) {
       supabase.auth.getSession().then(({ data: { session } }) => {
+        if (!isMounted) return;
         if (session?.user) {
+          const u = session.user;
+          const email = u.email || '';
+          const name = (u.user_metadata?.full_name as string) || email.split('@')[0] || 'Vault User';
           setUser({
-            id: session.user.id,
-            email: session.user.email || 'user@clientvault.io',
-            name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
-            role: (session.user.user_metadata?.role as 'freelancer' | 'client') || 'freelancer',
-            company: session.user.user_metadata?.company || 'ClientVault Member',
-          });
-        }
-        setIsLoading(false);
-      });
-
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        if (session?.user) {
-          setUser({
-            id: session.user.id,
-            email: session.user.email || 'user@clientvault.io',
-            name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
-            role: (session.user.user_metadata?.role as 'freelancer' | 'client') || 'freelancer',
-            company: session.user.user_metadata?.company || 'ClientVault Member',
+            id: u.id,
+            email,
+            name,
+            role: (u.user_metadata?.role as 'freelancer' | 'client') || 'freelancer',
+            company: (u.user_metadata?.company as string) || 'ClientVault Member',
           });
         } else {
+          // Check local stored session
+          const savedUser = localStorage.getItem('cv_current_user');
+          if (savedUser) {
+            try {
+              setUser(JSON.parse(savedUser));
+            } catch {
+              setUser(null);
+            }
+          } else {
+            setUser(null);
+          }
+        }
+        setIsInitializing(false);
+      });
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (!isMounted) return;
+        if (session?.user) {
+          const u = session.user;
+          const email = u.email || '';
+          const name = (u.user_metadata?.full_name as string) || email.split('@')[0] || 'Vault User';
+          const newUser: VaultUser = {
+            id: u.id,
+            email,
+            name,
+            role: (u.user_metadata?.role as 'freelancer' | 'client') || 'freelancer',
+            company: (u.user_metadata?.company as string) || 'ClientVault Member',
+          };
+          setUser(newUser);
+          localStorage.setItem('cv_current_user', JSON.stringify(newUser));
+        } else if (event === 'SIGNED_OUT') {
           setUser(null);
+          localStorage.removeItem('cv_current_user');
         }
       });
 
       return () => {
+        isMounted = false;
         subscription.unsubscribe();
       };
     } else {
-      // Local session
       const savedUser = localStorage.getItem('cv_current_user');
       if (savedUser) {
         try {
           setUser(JSON.parse(savedUser));
         } catch {
-          setUser(DEMO_FREELANCER);
+          setUser(null);
         }
       } else {
-        // Default to demo freelancer on first load for instant accessibility
-        setUser(DEMO_FREELANCER);
+        setUser(null);
       }
-      setIsLoading(false);
+      setIsInitializing(false);
     }
   }, []);
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    setIsLoading(true);
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password;
+
     const supabase = getSupabaseClient();
 
     if (supabase) {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: cleanPassword,
+        });
 
-      setIsLoading(false);
-      if (error) {
-        return { success: false, error: error.message };
-      }
+        if (error) {
+          if (error.message.toLowerCase().includes('invalid login credentials')) {
+            return {
+              success: false,
+              error: 'Invalid email or password. Please verify your credentials or create a new account.',
+            };
+          }
+          if (error.message.toLowerCase().includes('email not confirmed')) {
+            return {
+              success: false,
+              error: 'Please confirm your email address before signing in.',
+            };
+          }
+          return { success: false, error: error.message };
+        }
 
-      if (data.user) {
-        const loggedUser: VaultUser = {
-          id: data.user.id,
-          email: data.user.email || email,
-          name: data.user.user_metadata?.full_name || email.split('@')[0],
-          role: (data.user.user_metadata?.role as 'freelancer' | 'client') || 'freelancer',
-          company: data.user.user_metadata?.company || 'ClientVault Member',
-        };
-        setUser(loggedUser);
-        localStorage.setItem('cv_current_user', JSON.stringify(loggedUser));
-        return { success: true };
+        if (data.user) {
+          const loggedUser: VaultUser = {
+            id: data.user.id,
+            email: data.user.email || cleanEmail,
+            name: data.user.user_metadata?.full_name || cleanEmail.split('@')[0],
+            role: (data.user.user_metadata?.role as 'freelancer' | 'client') || 'freelancer',
+            company: (data.user.user_metadata?.company as string) || 'ClientVault Member',
+          };
+          setUser(loggedUser);
+          localStorage.setItem('cv_current_user', JSON.stringify(loggedUser));
+          return { success: true };
+        }
+      } catch (err: any) {
+        return { success: false, error: err?.message || 'Login failed.' };
       }
     }
 
-    // Local authentication fallback for prototyping
-    await new Promise((r) => setTimeout(r, 400));
-    if (!email || !password) {
-      setIsLoading(false);
+    // Local fallback session
+    if (!cleanEmail || !cleanPassword) {
       return { success: false, error: 'Email and password are required.' };
     }
 
-    if (password.length < 6) {
-      setIsLoading(false);
+    if (cleanPassword.length < 6) {
       return { success: false, error: 'Password must be at least 6 characters.' };
     }
 
-    const isClient = email.toLowerCase().includes('client') || email.toLowerCase().includes('acme');
-    const newUser: VaultUser = isClient
-      ? { ...DEMO_CLIENT, email }
-      : { ...DEMO_FREELANCER, email, name: email.split('@')[0] };
+    const newUser: VaultUser = {
+      id: `usr-${Date.now()}`,
+      email: cleanEmail,
+      name: cleanEmail.split('@')[0],
+      role: 'freelancer',
+      company: 'ClientVault Workspace',
+    };
 
     setUser(newUser);
     localStorage.setItem('cv_current_user', JSON.stringify(newUser));
-    setIsLoading(false);
     return { success: true };
   };
 
@@ -146,145 +166,117 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     email: string,
     password: string,
     name: string,
-    role: 'freelancer' | 'client'
+    role: 'freelancer' | 'client' = 'freelancer'
   ): Promise<{ success: boolean; error?: string }> => {
-    setIsLoading(true);
-    const supabase = getSupabaseClient();
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password;
+    const cleanName = name.trim();
 
-    if (supabase) {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: name,
-            role,
-          },
-        },
-      });
-
-      setIsLoading(false);
-      if (error) {
-        return { success: false, error: error.message };
-      }
-
-      if (data.user) {
-        const loggedUser: VaultUser = {
-          id: data.user.id,
-          email: data.user.email || email,
-          name,
-          role,
-          company: role === 'freelancer' ? 'Design Studio' : 'Client Partner',
-        };
-        setUser(loggedUser);
-        localStorage.setItem('cv_current_user', JSON.stringify(loggedUser));
-        return { success: true };
-      }
-    }
-
-    // Local signup simulation
-    await new Promise((r) => setTimeout(r, 400));
-    if (!email || !password || !name) {
-      setIsLoading(false);
-      return { success: false, error: 'All fields are required.' };
-    }
-
-    const newUser: VaultUser = {
-      id: `usr-${Date.now().toString(36)}`,
-      email,
-      name,
-      role,
-      company: role === 'freelancer' ? `${name}'s Creative Studio` : 'Client Partner Ltd',
-    };
-
-    setUser(newUser);
-    localStorage.setItem('cv_current_user', JSON.stringify(newUser));
-    setIsLoading(false);
-    return { success: true };
-  };
-
-  const signInWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
-    setIsLoading(true);
     const supabase = getSupabaseClient();
 
     if (supabase) {
       try {
         const origin = typeof window !== 'undefined' ? window.location.origin : '';
-        const { data, error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
+        const { data, error } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password: cleanPassword,
           options: {
-            redirectTo: `${origin}/auth/callback?next=/dashboard/projects`,
+            emailRedirectTo: `${origin}/auth/callback?next=/dashboard/projects`,
+            data: {
+              full_name: cleanName,
+              role,
+            },
           },
         });
 
         if (error) {
-          setIsLoading(false);
           return { success: false, error: error.message };
         }
 
-        if (data?.url) {
-          window.location.href = data.url;
+        if (data?.session && data.user) {
+          const newUser: VaultUser = {
+            id: data.user.id,
+            email: data.user.email || cleanEmail,
+            name: cleanName,
+            role,
+            company: 'ClientVault Member',
+          };
+          setUser(newUser);
+          localStorage.setItem('cv_current_user', JSON.stringify(newUser));
           return { success: true };
         }
+
+        return {
+          success: true,
+          error: undefined,
+        };
       } catch (err: any) {
-        setIsLoading(false);
-        return { success: false, error: err.message };
+        return { success: false, error: err?.message || 'Sign up failed.' };
       }
     }
 
-    // Interactive preview fallback: simulate authenticated Google login
-    await new Promise((r) => setTimeout(r, 600));
-    const googleUser: VaultUser = {
-      id: 'usr-google-3910',
-      email: 'alex.rivera.design@gmail.com',
-      name: 'Alex Rivera (Google)',
-      role: 'freelancer',
-      company: 'Rivera Creative Studio',
-      avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=128&q=80',
+    // Local fallback
+    const newUser: VaultUser = {
+      id: `usr-${Date.now()}`,
+      email: cleanEmail,
+      name: cleanName || cleanEmail.split('@')[0],
+      role,
+      company: 'ClientVault Workspace',
     };
-    setUser(googleUser);
-    localStorage.setItem('cv_current_user', JSON.stringify(googleUser));
-    setIsLoading(false);
+
+    setUser(newUser);
+    localStorage.setItem('cv_current_user', JSON.stringify(newUser));
     return { success: true };
   };
 
-  const logout = () => {
+  const signInWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      return { success: false, error: 'Supabase URL and API Key must be configured for Google OAuth.' };
+    }
+
+    try {
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${origin}/auth/callback?next=/dashboard/projects`,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.url) {
+        window.location.assign(data.url);
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Google OAuth failed' };
+    }
+  };
+
+  const logout = async () => {
     const supabase = getSupabaseClient();
     if (supabase) {
-      supabase.auth.signOut().catch(console.warn);
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.warn('Sign out notice:', err);
+      }
     }
     setUser(null);
     localStorage.removeItem('cv_current_user');
-  };
-
-  const switchRole = (role: 'freelancer' | 'client') => {
-    if (!user) return;
-    const base = role === 'freelancer' ? DEMO_FREELANCER : DEMO_CLIENT;
-    const updated: VaultUser = {
-      ...base,
-    };
-    setUser(updated);
-    localStorage.setItem('cv_current_user', JSON.stringify(updated));
-  };
-
-  const demoLogin = (role: 'freelancer' | 'client') => {
-    const target = role === 'freelancer' ? DEMO_FREELANCER : DEMO_CLIENT;
-    setUser(target);
-    localStorage.setItem('cv_current_user', JSON.stringify(target));
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        isAuthenticated: Boolean(user),
-        isLoading,
+        isAuthenticated: !!user,
+        isLoading: isInitializing,
         login,
         signup,
         signInWithGoogle,
         logout,
-        switchRole,
-        demoLogin,
       }}
     >
       {children}
@@ -292,10 +284,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 };
 
-export function useAuth() {
+export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}
+};

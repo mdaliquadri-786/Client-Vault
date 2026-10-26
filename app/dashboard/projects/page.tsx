@@ -13,6 +13,7 @@ import {
   Clock,
   Loader2,
   ShieldCheck,
+  AlertCircle,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { Project } from '@/types/database';
@@ -22,11 +23,13 @@ import { InviteClientModal } from '@/components/InviteClientModal';
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [activeInviteProject, setActiveInviteProject] = useState<Project | null>(null);
 
   const fetchProjects = async () => {
     setLoading(true);
+    setErrorMessage(null);
     const supabase = createClient();
 
     try {
@@ -36,48 +39,16 @@ export default function ProjectsPage() {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.warn('Projects fetch notice:', error.message);
-      }
-
-      if (data && data.length > 0) {
-        setProjects(data as Project[]);
+        console.warn('Projects fetch error:', error.message);
+        setErrorMessage('Unable to load client projects from database.');
+        setProjects([]);
       } else {
-        // Default projects for demonstration and testing
-        setProjects([
-          {
-            id: 'proj-acme-2026',
-            name: 'Acme Rebrand 2026',
-            client_name: 'Acme Corporation',
-            owner_id: 'usr-freelancer-8472',
-            created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(),
-            updated_at: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-            file_count: 5,
-            total_bytes: 68300000,
-          },
-          {
-            id: 'proj-horizon-2026',
-            name: 'Horizon Mobile App',
-            client_name: 'Horizon Health Tech',
-            owner_id: 'usr-freelancer-8472',
-            created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 14).toISOString(),
-            updated_at: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
-            file_count: 1,
-            total_bytes: 6180000,
-          },
-          {
-            id: 'proj-apex-2026',
-            name: 'Apex Retail Portal',
-            client_name: 'Apex Global Industries',
-            owner_id: 'usr-freelancer-8472',
-            created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString(),
-            updated_at: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
-            file_count: 3,
-            total_bytes: 18200000,
-          },
-        ]);
+        setProjects((data as Project[]) || []);
       }
-    } catch (err) {
-      console.error('Fetch projects error:', err);
+    } catch (err: any) {
+      console.error('Fetch projects exception:', err);
+      setErrorMessage('Network or server error while loading projects.');
+      setProjects([]);
     } finally {
       setLoading(false);
     }
@@ -88,7 +59,7 @@ export default function ProjectsPage() {
   }, []);
 
   const formatFileSize = (bytes: number = 0): string => {
-    if (bytes === 0) return '0 B';
+    if (!bytes || bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -107,109 +78,132 @@ export default function ProjectsPage() {
     }
   };
 
-  const handleProjectCreated = (newProject: Project) => {
-    setProjects((prev) => [newProject, ...prev]);
-  };
-
   return (
-    <div className="space-y-6 max-w-6xl mx-auto font-sans">
+    <div className="space-y-6 max-w-6xl mx-auto font-sans text-slate-800">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-200/80">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900">
-            Client Projects & Portals
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-sky-600 bg-sky-50 px-2 py-0.5 rounded border border-sky-100">
+              Client Vaults
+            </span>
+            <span className="text-xs text-slate-400">/</span>
+            <span className="text-xs text-slate-500 font-medium">Directory</span>
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            Client Projects
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Manage your client workspaces, deliverables, and client portal invitations.
+            Dedicated project vaults with isolated Row Level Security access controls.
           </p>
         </div>
 
         <button
           onClick={() => setIsCreateModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-[#0B1329] hover:bg-[#162447] rounded-lg shadow-xs transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#0B1329] text-white text-xs font-semibold hover:bg-[#162347] transition-colors shadow-xs cursor-pointer shrink-0"
         >
-          <FolderPlus className="w-4 h-4" />
+          <FolderPlus className="w-4 h-4 text-sky-400" />
           <span>Create New Project</span>
         </button>
       </div>
 
-      {/* Projects Grid */}
+      {/* Error Banner */}
+      {errorMessage && (
+        <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-2.5 text-xs text-rose-700">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>{errorMessage}</span>
+        </div>
+      )}
+
+      {/* Loading State */}
       {loading ? (
-        <div className="p-12 text-center flex flex-col items-center justify-center">
-          <Loader2 className="w-6 h-6 text-sky-600 animate-spin mb-2" />
-          <p className="text-xs text-slate-500">Loading client projects...</p>
+        <div className="py-24 text-center flex flex-col items-center justify-center">
+          <Loader2 className="w-7 h-7 text-sky-600 animate-spin mb-3" />
+          <p className="text-xs text-slate-500 font-medium">Querying projects from database...</p>
         </div>
       ) : projects.length === 0 ? (
-        <div className="p-12 bg-white rounded-xl border border-slate-200 text-center flex flex-col items-center justify-center">
-          <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
-            <FolderKanban className="w-6 h-6" />
+        /* Empty State */
+        <div className="py-20 px-6 text-center bg-white rounded-xl border border-slate-200 shadow-xs flex flex-col items-center justify-center">
+          <div className="w-14 h-14 rounded-2xl bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-600 mb-4">
+            <FolderKanban className="w-7 h-7" />
           </div>
-          <h4 className="text-sm font-semibold text-slate-800 mb-1">No Projects Found</h4>
-          <p className="text-xs text-slate-500 max-w-sm mb-4">
-            Create your first client project to start isolating files and deliverables.
+          <h3 className="text-base font-semibold text-slate-900 mb-1">
+            No client projects found
+          </h3>
+          <p className="text-xs text-slate-500 max-w-md mb-6 leading-relaxed">
+            Create your first project vault to organize deliverables, upload assets, and invite clients with isolated Row Level Security.
           </p>
           <button
             onClick={() => setIsCreateModalOpen(true)}
-            className="px-4 py-2 text-xs font-medium text-white bg-[#0B1329] hover:bg-[#162447] rounded-lg transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#0B1329] text-white text-xs font-semibold hover:bg-[#162347] transition-colors shadow-sm cursor-pointer"
           >
-            Create First Project
+            <FolderPlus className="w-4 h-4 text-sky-400" />
+            <span>Create First Project</span>
           </button>
         </div>
       ) : (
+        /* Projects Grid */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {projects.map((proj) => (
+          {projects.map((project) => (
             <div
-              key={proj.id}
-              className="bg-white rounded-xl border border-slate-200 hover:border-slate-300 p-5 shadow-xs transition-all flex flex-col justify-between group"
+              key={project.id}
+              className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs hover:border-slate-300 hover:shadow-sm transition-all flex flex-col justify-between group"
             >
               <div>
-                {/* Client Company Badge & Security Pill */}
-                <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-                  <div className="flex items-center gap-1.5 text-slate-700 font-medium truncate max-w-[180px]">
-                    <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span className="truncate">{proj.client_name}</span>
-                  </div>
-                  <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded font-medium flex items-center gap-1">
-                    <ShieldCheck className="w-3 h-3" /> RLS Isolated
+                {/* Card Top: Client badge & RLS status */}
+                <div className="flex items-center justify-between text-xs mb-3">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 font-medium text-[11px]">
+                    <Building2 className="w-3 h-3 text-slate-500" />
+                    <span>{project.client_name || 'Client Partner'}</span>
+                  </span>
+                  <span className="text-[10px] text-emerald-600 font-medium flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3" />
+                    <span>RLS Protected</span>
                   </span>
                 </div>
 
                 {/* Project Title */}
-                <h3 className="text-base font-semibold text-slate-900 group-hover:text-sky-600 transition-colors">
-                  {proj.name}
+                <h3 className="text-base font-semibold text-slate-900 group-hover:text-sky-600 transition-colors line-clamp-1">
+                  {project.name}
                 </h3>
 
-                {/* Metrics */}
-                <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                {/* Metadata Row */}
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
                   <div className="flex items-center gap-1.5">
                     <Files className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="font-mono tabular-nums">{proj.file_count ?? 4} files</span>
+                    <span>{project.file_count ?? 0} deliverables</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 font-mono text-[11px]">
                     <HardDrive className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="font-mono tabular-nums">{formatFileSize(proj.total_bytes ?? 24500000)}</span>
+                    <span>{formatFileSize(project.total_bytes ?? 0)}</span>
                   </div>
+                </div>
+
+                <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  <span>Created {formatDate(project.created_at)}</span>
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                <button
-                  type="button"
-                  onClick={() => setActiveInviteProject(proj)}
-                  className="flex items-center gap-1.5 text-slate-600 hover:text-slate-900 font-medium py-1 px-2 rounded hover:bg-slate-100 transition-colors"
-                >
-                  <UserPlus className="w-3.5 h-3.5 text-sky-600" />
-                  <span>Invite Client</span>
-                </button>
-
+              {/* Card Actions */}
+              <div className="mt-5 pt-3 border-t border-slate-100 flex items-center gap-2">
                 <Link
-                  href={`/dashboard/projects/${proj.id}`}
-                  className="flex items-center gap-1 font-semibold text-sky-600 hover:text-sky-700 transition-colors py-1 px-2 rounded hover:bg-sky-50"
+                  href={`/dashboard/projects/${project.id}`}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 transition-colors shadow-2xs"
                 >
                   <span>Open Vault</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveInviteProject(project)}
+                  className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+                  title="Invite Client"
+                  aria-label="Invite Client"
+                >
+                  <UserPlus className="w-4 h-4 text-sky-600" />
+                </button>
               </div>
             </div>
           ))}
@@ -220,16 +214,19 @@ export default function ProjectsPage() {
       <CreateProjectModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        onProjectCreated={handleProjectCreated}
+        onProjectCreated={() => {
+          setIsCreateModalOpen(false);
+          fetchProjects();
+        }}
       />
 
       {/* Invite Client Modal */}
       {activeInviteProject && (
         <InviteClientModal
+          isOpen={Boolean(activeInviteProject)}
           projectId={activeInviteProject.id}
           projectName={activeInviteProject.name}
           clientName={activeInviteProject.client_name}
-          isOpen={Boolean(activeInviteProject)}
           onClose={() => setActiveInviteProject(null)}
         />
       )}

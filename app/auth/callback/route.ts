@@ -2,44 +2,56 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 /**
- * OAuth Callback Route Handler (app/auth/callback/route.ts)
+ * OAuth & Auth Code Exchange Callback Handler (app/auth/callback/route.ts)
  * 
- * Handles the OAuth exchange code on redirect from providers (e.g. Google),
- * sets the secure HTTP-only session cookies via @supabase/ssr, and redirects
- * the authenticated user directly into their projects vault.
+ * Securely handles the authorization code exchange on redirect from OAuth providers (e.g. Google)
+ * and email confirmations. Sets session cookies via @supabase/ssr and redirects cleanly to
+ * /dashboard/projects, stripping code query parameters.
  */
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get('code');
-  // 'next' param defaults to /dashboard/projects if not specified
-  const next = searchParams.get('next') ?? '/dashboard/projects';
+  const requestUrl = new URL(request.url);
+  const code = requestUrl.searchParams.get('code');
+  const error = requestUrl.searchParams.get('error');
+  const errorDescription = requestUrl.searchParams.get('error_description');
+
+  // If OAuth provider returned an explicit error parameter
+  if (error) {
+    console.error('OAuth callback error from provider:', error, errorDescription);
+    const redirectUrl = new URL('/login', requestUrl.origin);
+    redirectUrl.searchParams.set('error', errorDescription || error);
+    return NextResponse.redirect(redirectUrl.toString());
+  }
+
+  // Next destination defaults to /dashboard/projects
+  const next = requestUrl.searchParams.get('next') ?? '/dashboard/projects';
 
   if (code) {
     try {
       const supabase = await createClient();
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
 
-      if (!error) {
-        // Successfully exchanged OAuth authorization code for persistent session
-        const forwardedHost = request.headers.get('x-forwarded-host'); // original origin before reverse proxy
+      if (!exchangeError) {
+        // Forwarded host support for reverse proxies (Vercel, Cloud Run, etc.)
+        const forwardedHost = request.headers.get('x-forwarded-host');
         const isLocalEnv = process.env.NODE_ENV === 'development';
 
-        if (isLocalEnv) {
-          // In local dev, redirect to origin
-          return NextResponse.redirect(`${origin}${next}`);
-        } else if (forwardedHost) {
-          return NextResponse.redirect(`https://${forwardedHost}${next}`);
-        } else {
-          return NextResponse.redirect(`${origin}${next}`);
-        }
+        const targetBase = (!isLocalEnv && forwardedHost) 
+          ? `https://${forwardedHost}` 
+          : requestUrl.origin;
+
+        // Clean redirection URL stripping auth code parameter
+        const targetUrl = new URL(next, targetBase);
+        return NextResponse.redirect(targetUrl.toString());
       } else {
-        console.error('Supabase code exchange error:', error.message);
+        console.error('Supabase auth code exchange error:', exchangeError.message);
       }
-    } catch (err) {
-      console.error('OAuth callback server exception:', err);
+    } catch (err: any) {
+      console.error('Server exception during auth code exchange:', err);
     }
   }
 
-  // Return the user to an error page or login with informative query parameter
-  return NextResponse.redirect(`${origin}/login?error=oauth_exchange_failed`);
+  // In case of invalid/expired code, safely redirect to login with user-friendly alert
+  const failureUrl = new URL('/login', requestUrl.origin);
+  failureUrl.searchParams.set('error', 'Authentication session expired or invalid. Please sign in again.');
+  return NextResponse.redirect(failureUrl.toString());
 }

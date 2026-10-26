@@ -6,20 +6,17 @@ import { Header } from './components/Header.js';
 import { Dropzone } from './components/Dropzone.js';
 import { FileList } from './components/FileList.js';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal.js';
-import { ArchitectureModal } from './components/ArchitectureModal.js';
-import { SecurityInspector } from './components/SecurityInspector.js';
 import { AuthPage } from './components/AuthPage.js';
 import { ProjectsView } from './components/ProjectsView.js';
 import { InviteClientModal } from '@/components/InviteClientModal';
 import { VaultFile } from './types/index.js';
-import { Plus, UploadCloud, Shield, CheckCircle2, UserPlus } from 'lucide-react';
+import { UploadCloud, UserPlus } from 'lucide-react';
 
 function DashboardContent() {
   const { user } = useAuth();
-  const { selectedProject, setSelectedProject } = useVault();
-  const [currentTab, setCurrentTab] = useState<'files' | 'projects' | 'upload' | 'security'>('files');
+  const { selectedProject, setSelectedProject, projects } = useVault();
+  const [currentTab, setCurrentTab] = useState<'files' | 'projects' | 'upload'>('files');
   const [fileToDelete, setFileToDelete] = useState<VaultFile | null>(null);
-  const [isArchitectureModalOpen, setIsArchitectureModalOpen] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [showInlineDropzone, setShowInlineDropzone] = useState(false);
 
@@ -29,10 +26,9 @@ function DashboardContent() {
       <Sidebar
         currentTab={currentTab}
         setCurrentTab={(tab) => {
-          setCurrentTab(tab as 'files' | 'upload' | 'security');
+          setCurrentTab(tab as 'files' | 'projects' | 'upload');
           if (tab === 'files') setShowInlineDropzone(false);
         }}
-        onOpenArchitectureModal={() => setIsArchitectureModalOpen(true)}
       />
 
       {/* Main Content Viewport */}
@@ -45,7 +41,6 @@ function DashboardContent() {
             }
             setShowInlineDropzone((prev) => !prev);
           }}
-          onOpenArchitectureModal={() => setIsArchitectureModalOpen(true)}
         />
 
         {/* Scrollable View Area */}
@@ -63,26 +58,26 @@ function DashboardContent() {
                         : `${selectedProject} Vault`}
                     </h1>
                     <p className="text-xs text-slate-500 mt-1">
-                      {user?.role === 'freelancer'
-                        ? 'Manage, organize, and securely share production files with clients.'
-                        : 'Securely download final deliverables and upload project feedback.'}
+                      Manage, organize, and securely share production files with clients using Row Level Security.
                     </p>
                   </div>
 
                   <div className="flex items-center gap-2.5">
-                    <button
-                      onClick={() => setIsInviteModalOpen(true)}
-                      className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors shadow-xs"
-                    >
-                      <UserPlus className="w-4 h-4 text-sky-600" />
-                      <span>Invite Client</span>
-                    </button>
+                    {projects.length > 0 && (
+                      <button
+                        onClick={() => setIsInviteModalOpen(true)}
+                        className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors shadow-xs cursor-pointer"
+                      >
+                        <UserPlus className="w-4 h-4 text-sky-600" />
+                        <span>Invite Client</span>
+                      </button>
+                    )}
 
                     <button
                       onClick={() => setShowInlineDropzone((prev) => !prev)}
-                      className="flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors shadow-xs"
+                      className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-white bg-[#0B1329] hover:bg-[#162347] rounded-lg transition-colors shadow-xs cursor-pointer"
                     >
-                      <UploadCloud className="w-4 h-4 text-sky-600" />
+                      <UploadCloud className="w-4 h-4 text-sky-400" />
                       <span>{showInlineDropzone ? 'Hide Upload Area' : 'Quick Upload'}</span>
                     </button>
                   </div>
@@ -121,20 +116,17 @@ function DashboardContent() {
                     Upload to Client Vault
                   </h1>
                   <p className="text-xs text-slate-500 mt-1">
-                    Drag and drop design files, client assets, and deliverables with automated encryption.
+                    Drag and drop deliverables and assets into Supabase Storage with Row Level Security.
                   </p>
                 </div>
 
                 <Dropzone
                   onUploadSuccess={() => {
-                    setTimeout(() => setCurrentTab('files'), 1200);
+                    setTimeout(() => setCurrentTab('files'), 800);
                   }}
                 />
               </div>
             )}
-
-            {/* View 4: Security & RLS Policies Inspector */}
-            {currentTab === 'security' && <SecurityInspector />}
           </div>
         </main>
       </div>
@@ -150,18 +142,12 @@ function DashboardContent() {
       {/* Invite Client Modal */}
       {isInviteModalOpen && (
         <InviteClientModal
-          projectId="proj-acme-2026"
-          projectName={selectedProject === 'All Projects' ? 'Acme Rebrand 2026' : selectedProject}
+          projectId={selectedProject !== 'All Projects' ? selectedProject : 'project-vault'}
+          projectName={selectedProject !== 'All Projects' ? selectedProject : 'Active Project Vault'}
           isOpen={isInviteModalOpen}
           onClose={() => setIsInviteModalOpen(false)}
         />
       )}
-
-      {/* Architecture & Next.js/Supabase Spec Modal */}
-      <ArchitectureModal
-        isOpen={isArchitectureModalOpen}
-        onClose={() => setIsArchitectureModalOpen(false)}
-      />
     </div>
   );
 }
@@ -171,7 +157,7 @@ function MainApp() {
 
   if (isLoading) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-slate-50">
+      <div className="h-screen w-screen flex items-center justify-center bg-slate-50 font-sans">
         <div className="text-center space-y-2">
           <div className="w-8 h-8 border-2 border-slate-800 border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-xs text-slate-500 font-medium">Securing session...</p>

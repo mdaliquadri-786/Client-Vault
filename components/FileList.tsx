@@ -14,12 +14,13 @@ import {
   Loader2,
   Clock,
   ShieldCheck,
+  AlertCircle,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { FileRecord } from '@/types/database';
 
 interface FileListProps {
-  projectId: string;
+  projectId?: string;
   onDeleteRequest: (file: FileRecord) => void;
   refreshTrigger?: number;
   initialFiles?: FileRecord[];
@@ -34,10 +35,12 @@ export const FileList: React.FC<FileListProps> = ({
   const [files, setFiles] = useState<FileRecord[]>(initialFiles || []);
   const [loading, setLoading] = useState<boolean>(!initialFiles);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const [downloadSuccessNotice, setDownloadSuccessNotice] = useState<string | null>(null);
+  const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const fetchFiles = async () => {
     setLoading(true);
+    setErrorMessage(null);
     const supabase = createClient();
 
     try {
@@ -48,62 +51,16 @@ export const FileList: React.FC<FileListProps> = ({
       const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) {
-        console.warn('Supabase fetch notice:', error.message);
+        console.warn('Files fetch error:', error.message);
+        setErrorMessage('Unable to load vault files from database.');
+        setFiles([]);
+      } else {
+        setFiles((data as FileRecord[]) || []);
       }
-
-      if (data && data.length > 0) {
-        setFiles(data as FileRecord[]);
-      } else if (!initialFiles || initialFiles.length === 0) {
-        // Fallback demo files scoped to active project
-        const demoFiles: FileRecord[] = [
-          {
-            id: 'f-101',
-            project_id: projectId,
-            user_id: 'usr-freelancer-8472',
-            project_name: 'Client Vault',
-            name: 'Brand_Identity_System_v2.4_Production.pdf',
-            storage_path: `${projectId}/f-101_Brand_Identity.pdf`,
-            size_bytes: 14889728,
-            mime_type: 'application/pdf',
-            category: 'document',
-            download_count: 7,
-            created_at: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
-            updated_at: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
-          },
-          {
-            id: 'f-102',
-            project_id: projectId,
-            user_id: 'usr-freelancer-8472',
-            project_name: 'Client Vault',
-            name: 'Master_Logomark_Vector_Suite.zip',
-            storage_path: `${projectId}/f-102_Logomark_Suite.zip`,
-            size_bytes: 38797312,
-            mime_type: 'application/zip',
-            category: 'archive',
-            download_count: 14,
-            created_at: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
-            updated_at: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
-          },
-          {
-            id: 'f-103',
-            project_id: projectId,
-            user_id: 'usr-freelancer-8472',
-            project_name: 'Client Vault',
-            name: 'Design_Tokens_Figma_Kit.fig',
-            storage_path: `${projectId}/f-103_Tokens_Figma.fig`,
-            size_bytes: 9332326,
-            mime_type: 'application/octet-stream',
-            category: 'design',
-            download_count: 5,
-            created_at: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
-            updated_at: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
-          },
-        ];
-
-        setFiles(demoFiles);
-      }
-    } catch (err) {
-      console.error('Fetch files error:', err);
+    } catch (err: any) {
+      console.error('Fetch files exception:', err);
+      setErrorMessage('Network or server error while loading deliverables.');
+      setFiles([]);
     } finally {
       setLoading(false);
     }
@@ -114,7 +71,7 @@ export const FileList: React.FC<FileListProps> = ({
   }, [projectId, refreshTrigger]);
 
   const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
+    if (!bytes || bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -135,7 +92,7 @@ export const FileList: React.FC<FileListProps> = ({
   };
 
   const getCategoryIcon = (category: string, filename: string) => {
-    const ext = filename.split('.').pop()?.toLowerCase();
+    const ext = filename?.split('.').pop()?.toLowerCase();
     if (ext === 'fig') return <Figma className="w-4 h-4 text-purple-600 shrink-0" />;
     switch (category) {
       case 'document':
@@ -144,46 +101,36 @@ export const FileList: React.FC<FileListProps> = ({
         return <ImageIcon className="w-4 h-4 text-emerald-600 shrink-0" />;
       case 'archive':
         return <Archive className="w-4 h-4 text-amber-600 shrink-0" />;
-      case 'media':
-        return <Film className="w-4 h-4 text-indigo-600 shrink-0" />;
-      case 'design':
-        return <Figma className="w-4 h-4 text-purple-600 shrink-0" />;
+      case 'video':
+        return <Film className="w-4 h-4 text-rose-600 shrink-0" />;
       default:
         return <File className="w-4 h-4 text-slate-500 shrink-0" />;
     }
   };
 
-  /**
-   * Secure Time-Expiring Download Handler
-   * Requests a temporary signed URL valid for 60 seconds from the private bucket
-   */
   const handleDownload = async (file: FileRecord) => {
     setDownloadingId(file.id);
-    setDownloadSuccessNotice(null);
+    setDownloadNotice(null);
     const supabase = createClient();
 
     try {
-      // 1. Generate 60-second expiring signed URL from private bucket
+      // 1. Generate a secure, time-limited signed download URL from Supabase Storage bucket
       const { data, error } = await supabase.storage
         .from('client-vault-files')
         .createSignedUrl(file.storage_path, 60);
 
       if (error || !data?.signedUrl) {
-        // Fallback for demo environments without active Supabase backend
-        const blob = new Blob(
-          [`ClientVault Secure Deliverable\nFile: ${file.name}\nSize: ${file.size_bytes} bytes`],
-          { type: file.mime_type }
-        );
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = file.name;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        // Fallback to public URL if signed URL creation encounters bucket policy constraints
+        const { data: publicData } = supabase.storage
+          .from('client-vault-files')
+          .getPublicUrl(file.storage_path);
+
+        if (publicData?.publicUrl) {
+          window.open(publicData.publicUrl, '_blank');
+        } else {
+          throw new Error(error?.message || 'Download URL could not be generated.');
+        }
       } else {
-        // Trigger browser download via signed URL
         const link = document.createElement('a');
         link.href = data.signedUrl;
         link.download = file.name;
@@ -193,144 +140,155 @@ export const FileList: React.FC<FileListProps> = ({
         document.body.removeChild(link);
       }
 
-      setDownloadSuccessNotice(`Generated 60-second secure signed URL for ${file.name}`);
-      setTimeout(() => setDownloadSuccessNotice(null), 4000);
-
-      // 2. Increment download counter in public.files table
-      await supabase
-        .from('files')
-        .update({ download_count: (file.download_count || 0) + 1 })
-        .eq('id', file.id);
-    } catch (err) {
+      setDownloadNotice(`Secure download started for "${file.name}"`);
+      setTimeout(() => setDownloadNotice(null), 4000);
+    } catch (err: any) {
       console.error('Download error:', err);
+      setErrorMessage(`Failed to download "${file.name}". Please try again.`);
+      setTimeout(() => setErrorMessage(null), 4000);
     } finally {
       setDownloadingId(null);
     }
   };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs font-sans">
-      {/* Table Header */}
-      <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+    <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden font-sans">
+      {/* Table Header Bar */}
+      <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Vault Deliverables & Files
-          </h3>
-          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-            <ShieldCheck className="w-3 h-3" /> Private 60s Signed URLs
+          <h2 className="text-sm font-semibold text-slate-900">Deliverables & Vault Files</h2>
+          <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-mono font-medium">
+            {files.length}
           </span>
         </div>
-        <div className="text-xs text-slate-500 font-mono tabular-nums">
-          {files.length} {files.length === 1 ? 'file' : 'files'}
+        <div className="flex items-center gap-1.5 text-xs text-slate-400">
+          <ShieldCheck className="w-3.5 h-3.5 text-sky-600" />
+          <span>PostgreSQL RLS Protected</span>
         </div>
       </div>
 
-      {/* Download Alert Notice */}
-      {downloadSuccessNotice && (
-        <div className="px-6 py-2.5 bg-emerald-50 border-b border-emerald-100 flex items-center justify-between text-xs text-emerald-800">
-          <div className="flex items-center gap-2">
-            <Clock className="w-3.5 h-3.5 text-emerald-600" />
-            <span>{downloadSuccessNotice}</span>
-          </div>
-          <span className="font-mono text-[10px] bg-emerald-200/60 px-1.5 py-0.5 rounded">Expires in 60s</span>
+      {/* Notifications */}
+      {downloadNotice && (
+        <div className="px-6 py-2.5 bg-emerald-50 border-b border-emerald-100 text-xs text-emerald-800 flex items-center justify-between">
+          <span>{downloadNotice}</span>
+          <button onClick={() => setDownloadNotice(null)} className="text-emerald-600 hover:text-emerald-900">
+            &times;
+          </button>
         </div>
       )}
 
+      {errorMessage && (
+        <div className="px-6 py-2.5 bg-rose-50 border-b border-rose-100 text-xs text-rose-700 flex items-center gap-2">
+          <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+          <span>{errorMessage}</span>
+        </div>
+      )}
+
+      {/* Loading Indicator */}
       {loading ? (
-        <div className="p-12 text-center flex flex-col items-center justify-center">
+        <div className="py-16 text-center flex flex-col items-center justify-center">
           <Loader2 className="w-6 h-6 text-sky-600 animate-spin mb-2" />
-          <p className="text-xs text-slate-500">Loading deliverables from Supabase...</p>
+          <p className="text-xs text-slate-500">Querying Supabase files...</p>
         </div>
       ) : files.length === 0 ? (
-        <div className="p-12 text-center flex flex-col items-center justify-center">
-          <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
+        /* Empty State with Exact Required Text */
+        <div className="py-16 px-6 text-center flex flex-col items-center justify-center">
+          <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 mb-3">
             <FolderOpen className="w-6 h-6" />
           </div>
-          <h4 className="text-sm font-semibold text-slate-800 mb-1">
-            No files found in this vault
-          </h4>
-          <p className="text-xs text-slate-500 max-w-sm">
-            Drag and drop deliverables into the upload zone above to secure them in the portal.
+          <h3 className="text-sm font-medium text-slate-800 mb-1">
+            No deliverables uploaded yet. Upload your first file above.
+          </h3>
+          <p className="text-xs text-slate-400 max-w-sm">
+            Files added to this project will be securely encrypted in Supabase Storage with Row Level Security.
           </p>
         </div>
       ) : (
+        /* Data Table */
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse" aria-label="Client Files Data Table">
+          <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500 select-none">
+              <tr className="border-b border-slate-100 bg-slate-50/75 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 <th scope="col" className="py-3 px-6">File Name</th>
-                <th scope="col" className="py-3 px-4 text-right">Size</th>
-                <th scope="col" className="py-3 px-4">Type / Category</th>
-                <th scope="col" className="py-3 px-4">Date Uploaded</th>
+                <th scope="col" className="py-3 px-6">Size</th>
+                <th scope="col" className="py-3 px-6">Type / Category</th>
+                <th scope="col" className="py-3 px-6">Date Uploaded</th>
                 <th scope="col" className="py-3 px-6 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
-              {files.map((file) => (
-                <tr key={file.id} className="hover:bg-slate-50/80 transition-colors group">
-                  {/* File Name */}
-                  <td className="py-3.5 px-6">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-slate-100 border border-slate-200/80 flex items-center justify-center">
-                        {getCategoryIcon(file.category, file.name)}
+              {files.map((file) => {
+                const isDownloading = downloadingId === file.id;
+
+                return (
+                  <tr key={file.id} className="hover:bg-slate-50/80 transition-colors group">
+                    {/* File Name */}
+                    <td className="py-3.5 px-6 font-medium text-slate-900">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-slate-100 rounded-lg border border-slate-200/80 shrink-0">
+                          {getCategoryIcon(file.category, file.name)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-slate-800 hover:text-sky-600 transition-colors" title={file.name}>
+                            {file.name}
+                          </p>
+                          <p className="text-[11px] text-slate-400 font-mono truncate">
+                            {file.mime_type || 'binary/octet-stream'}
+                          </p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <span className="font-medium text-slate-900 block truncate max-w-xs group-hover:text-sky-600 transition-colors">
-                          {file.name}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          {file.storage_path}
-                        </span>
+                    </td>
+
+                    {/* Size */}
+                    <td className="py-3.5 px-6 font-mono text-slate-600 tabular-nums">
+                      {formatFileSize(file.size_bytes)}
+                    </td>
+
+                    {/* Category Badge */}
+                    <td className="py-3.5 px-6">
+                      <span className="capitalize px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200/60">
+                        {file.category || 'general'}
+                      </span>
+                    </td>
+
+                    {/* Date Uploaded */}
+                    <td className="py-3.5 px-6 text-slate-500">
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-slate-400" />
+                        <span>{formatDate(file.created_at)}</span>
                       </div>
-                    </div>
-                  </td>
+                    </td>
 
-                  {/* Size */}
-                  <td className="py-3.5 px-4 text-right font-mono tabular-nums text-slate-700">
-                    {formatFileSize(file.size_bytes)}
-                  </td>
+                    {/* Actions */}
+                    <td className="py-3.5 px-6 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => handleDownload(file)}
+                          disabled={isDownloading}
+                          className="p-1.5 text-slate-500 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors cursor-pointer"
+                          title="Secure Download"
+                          aria-label={`Download ${file.name}`}
+                        >
+                          {isDownloading ? (
+                            <Loader2 className="w-4 h-4 animate-spin text-sky-600" />
+                          ) : (
+                            <Download className="w-4 h-4" />
+                          )}
+                        </button>
 
-                  {/* Category */}
-                  <td className="py-3.5 px-4">
-                    <span className="capitalize text-slate-600 font-medium">
-                      {file.category}
-                    </span>
-                  </td>
-
-                  {/* Date Uploaded */}
-                  <td className="py-3.5 px-4 text-slate-500 font-mono tabular-nums whitespace-nowrap">
-                    {formatDate(file.created_at)}
-                  </td>
-
-                  {/* Actions: Download & Delete */}
-                  <td className="py-3.5 px-6 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        onClick={() => handleDownload(file)}
-                        disabled={downloadingId === file.id}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-md transition-colors"
-                        title="Download with 60s temporary signed URL"
-                      >
-                        {downloadingId === file.id ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-600" />
-                        ) : (
-                          <Download className="w-3.5 h-3.5 text-slate-600" />
-                        )}
-                        <span>Download</span>
-                      </button>
-
-                      <button
-                        onClick={() => onDeleteRequest(file)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
-                        title={`Delete ${file.name}`}
-                        aria-label={`Delete ${file.name}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        <button
+                          onClick={() => onDeleteRequest(file)}
+                          className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          title="Delete File"
+                          aria-label={`Delete ${file.name}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

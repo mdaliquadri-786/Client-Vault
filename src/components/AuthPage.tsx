@@ -9,13 +9,11 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  KeyRound,
-  Shield,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.js';
 
 export const AuthPage: React.FC = () => {
-  const { login, signup, signInWithGoogle, demoLogin, isLoading } = useAuth();
+  const { login, signup, signInWithGoogle, isLoading } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -46,12 +44,15 @@ export const AuthPage: React.FC = () => {
     setError(null);
     setSuccessMessage(null);
 
-    if (!email.trim() || !password) {
-      setError('Please provide both email address and password.');
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password;
+
+    if (!cleanEmail || !cleanPassword) {
+      setError('Please provide both your email address and password.');
       return;
     }
 
-    if (password.length < 6) {
+    if (cleanPassword.length < 6) {
       setError('Password must be at least 6 characters in length.');
       return;
     }
@@ -61,46 +62,30 @@ export const AuthPage: React.FC = () => {
         setError('Please enter your full name to create an account.');
         return;
       }
-      const res = await signup(email.trim().toLowerCase(), password, name.trim(), role);
+      const res = await signup(cleanEmail, cleanPassword, name.trim(), role);
       if (!res.success) {
         setError(res.error || 'Failed to create account.');
       } else {
         setSuccessMessage('Account created successfully! Welcome to ClientVault.');
       }
     } else {
-      const res = await login(email.trim().toLowerCase(), password);
+      const res = await login(cleanEmail, cleanPassword);
       if (!res.success) {
-        setError(res.error || 'Invalid credentials or login failed.');
+        setError(res.error || 'Invalid email or password. Please verify your credentials.');
       }
     }
   };
 
-  const handleQuickFill = (targetRole: 'freelancer' | 'client') => {
-    setError(null);
-    setSuccessMessage(null);
-    if (targetRole === 'freelancer') {
-      setEmail('elena.designer@studioflow.design');
-      setPassword('secureVault2026!');
-      setName('Elena Rostova');
-      setRole('freelancer');
-    } else {
-      setEmail('marcus@acmecorp.com');
-      setPassword('clientVaultPass99');
-      setName('Marcus Vance');
-      setRole('client');
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans antialiased">
+    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans antialiased text-slate-800">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
         {/* Brand Lockup */}
         <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#0B1329] text-sky-400 mb-4 shadow-sm border border-slate-800">
           <FolderLock className="w-6 h-6" />
         </div>
-        <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">
           ClientVault
-        </h2>
+        </h1>
         <p className="mt-1 text-xs text-slate-500">
           Industrial-grade client file portal with Row Level Security & Google OAuth
         </p>
@@ -117,7 +102,7 @@ export const AuthPage: React.FC = () => {
                 setError(null);
                 setSuccessMessage(null);
               }}
-              className={`flex-1 py-2 text-xs font-semibold rounded-md transition-all ${
+              className={`flex-1 py-2 text-xs font-semibold rounded-md transition-all cursor-pointer ${
                 !isSignUp
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -132,7 +117,7 @@ export const AuthPage: React.FC = () => {
                 setError(null);
                 setSuccessMessage(null);
               }}
-              className={`flex-1 py-2 text-xs font-semibold rounded-md transition-all ${
+              className={`flex-1 py-2 text-xs font-semibold rounded-md transition-all cursor-pointer ${
                 isSignUp
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -158,20 +143,17 @@ export const AuthPage: React.FC = () => {
             </div>
           )}
 
-          {/* Prominent "Continue with Google" Button */}
-          <button
-            type="button"
-            onClick={handleGoogleAuth}
-            disabled={isGoogleLoading || isLoading}
-            className="w-full py-2.5 px-4 text-xs font-semibold rounded-lg text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 transition-all flex items-center justify-center gap-3 shadow-xs disabled:opacity-50"
-          >
-            {isGoogleLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin text-slate-600" />
-                <span>Connecting to Google...</span>
-              </>
-            ) : (
-              <>
+          {/* Google OAuth Button */}
+          <div>
+            <button
+              type="button"
+              onClick={handleGoogleAuth}
+              disabled={isGoogleLoading || isLoading}
+              className="w-full flex items-center justify-center gap-3 py-2.5 px-4 border border-slate-300 rounded-lg shadow-2xs bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 transition-all disabled:opacity-60 cursor-pointer"
+            >
+              {isGoogleLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
+              ) : (
                 <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true">
                   <path
                     fill="#4285F4"
@@ -190,25 +172,30 @@ export const AuthPage: React.FC = () => {
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                   />
                 </svg>
-                <span>Continue with Google</span>
-              </>
-            )}
-          </button>
+              )}
+              <span>{isGoogleLoading ? 'Connecting to Google...' : 'Continue with Google'}</span>
+            </button>
+          </div>
 
-          {/* "OR" Divider */}
-          <div className="relative my-6">
+          {/* Divider */}
+          <div className="mt-6 relative">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-slate-200" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-3 text-slate-400 font-semibold tracking-wider">
-                Or
+              <span className="bg-white px-2 text-slate-400 font-medium">
+                Or continue with email
               </span>
             </div>
           </div>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Email / Password Form */}
+          <form
+            className="mt-6 space-y-4"
+            onSubmit={handleSubmit}
+            action="javascript:void(0);"
+            noValidate
+          >
             {isSignUp && (
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -221,8 +208,8 @@ export const AuthPage: React.FC = () => {
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Elena Rostova"
-                    className="w-full bg-slate-50 text-slate-900 text-xs pl-9 pr-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:border-[#0B1329] focus:bg-white transition-all"
+                    placeholder="e.g. Alex Morgan"
+                    className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-colors"
                   />
                 </div>
               </div>
@@ -239,8 +226,8 @@ export const AuthPage: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="designer@studioflow.design"
-                  className="w-full bg-slate-50 text-slate-900 text-xs pl-9 pr-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:border-[#0B1329] focus:bg-white transition-all"
+                  placeholder="name@company.com"
+                  className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-colors"
                 />
               </div>
             </div>
@@ -256,55 +243,17 @@ export const AuthPage: React.FC = () => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
-                  className="w-full bg-slate-50 text-slate-900 text-xs pl-9 pr-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:border-[#0B1329] focus:bg-white transition-all"
+                  placeholder="Minimum 6 characters"
+                  className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-colors"
                 />
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">Minimum 6 characters</p>
             </div>
 
-            {isSignUp && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Account Type
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setRole('freelancer')}
-                    className={`p-2.5 text-xs rounded-lg border text-left transition-colors ${
-                      role === 'freelancer'
-                        ? 'border-sky-500 bg-sky-50/50 text-sky-900 font-semibold'
-                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    <span className="block font-medium">Freelancer / Designer</span>
-                    <span className="text-[10px] text-slate-400 font-normal">
-                      Full vault management
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRole('client')}
-                    className={`p-2.5 text-xs rounded-lg border text-left transition-colors ${
-                      role === 'client'
-                        ? 'border-sky-500 bg-sky-50/50 text-sky-900 font-semibold'
-                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    <span className="block font-medium">Client Partner</span>
-                    <span className="text-[10px] text-slate-400 font-normal">
-                      Project-scoped access
-                    </span>
-                  </button>
-                </div>
-              </div>
-            )}
-
             <button
-              type="submit"
+              type="button"
+              onClick={handleSubmit}
               disabled={isLoading || isGoogleLoading}
-              className="w-full mt-2 py-2.5 px-4 text-xs font-semibold rounded-lg text-white bg-[#0B1329] hover:bg-slate-800 focus:outline-none transition-colors flex items-center justify-center gap-2 shadow-xs disabled:opacity-50"
+              className="w-full mt-2 py-2.5 px-4 text-xs font-semibold rounded-lg text-white bg-[#0B1329] hover:bg-slate-800 focus:outline-none transition-colors flex items-center justify-center gap-2 shadow-xs disabled:opacity-50 cursor-pointer"
             >
               {isLoading ? (
                 <>
@@ -319,47 +268,9 @@ export const AuthPage: React.FC = () => {
               )}
             </button>
           </form>
-
-          {/* Quick Demo Credentials */}
-          <div className="mt-6 pt-6 border-t border-slate-200/80">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-2.5">
-              Instant Demo Access
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  handleQuickFill('freelancer');
-                  demoLogin('freelancer');
-                }}
-                className="p-2 text-xs text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors"
-              >
-                <div className="flex items-center gap-1.5 font-medium text-slate-800 text-[11px]">
-                  <KeyRound className="w-3 h-3 text-sky-600" />
-                  <span>Elena (Freelancer)</span>
-                </div>
-                <div className="text-[10px] text-slate-400 mt-0.5">Admin & Project Owner</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  handleQuickFill('client');
-                  demoLogin('client');
-                }}
-                className="p-2 text-xs text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors"
-              >
-                <div className="flex items-center gap-1.5 font-medium text-slate-800 text-[11px]">
-                  <KeyRound className="w-3 h-3 text-emerald-600" />
-                  <span>Marcus (Client)</span>
-                </div>
-                <div className="text-[10px] text-slate-400 mt-0.5">Acme Corporation</div>
-              </button>
-            </div>
-          </div>
         </div>
 
-        {/* Security Trust Badges */}
+        {/* Security Badges */}
         <div className="mt-6 flex items-center justify-center gap-4 text-xs text-slate-500">
           <span className="flex items-center gap-1">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> PostgreSQL RLS

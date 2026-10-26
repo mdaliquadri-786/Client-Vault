@@ -17,11 +17,12 @@ import {
   ShieldCheck,
   FolderLock,
   Loader2,
+  FolderOpen,
 } from 'lucide-react';
 
 export default function ProjectVaultPage() {
   const params = useParams();
-  const projectId = (params?.projectId as string) || 'proj-acme-2026';
+  const projectId = (params?.projectId as string) || '';
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,6 +32,11 @@ export default function ProjectVaultPage() {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
 
   useEffect(() => {
+    if (!projectId) {
+      setLoading(false);
+      return;
+    }
+
     const fetchProjectDetails = async () => {
       setLoading(true);
       const supabase = createClient();
@@ -45,28 +51,11 @@ export default function ProjectVaultPage() {
         if (data) {
           setProject(data as Project);
         } else {
-          // Fallback project details for local development/preview
-          const nameMap: Record<string, { name: string; client: string }> = {
-            'proj-acme-2026': { name: 'Acme Rebrand 2026', client: 'Acme Corporation' },
-            'proj-horizon-2026': { name: 'Horizon Mobile App', client: 'Horizon Health Tech' },
-            'proj-apex-2026': { name: 'Apex Retail Portal', client: 'Apex Global Industries' },
-          };
-          const fallback = nameMap[projectId] || {
-            name: 'Client Project Portal',
-            client: 'Client Partner',
-          };
-
-          setProject({
-            id: projectId,
-            name: fallback.name,
-            client_name: fallback.client,
-            owner_id: 'usr-freelancer-8472',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          });
+          setProject(null);
         }
       } catch (err) {
         console.error('Error loading project:', err);
+        setProject(null);
       } finally {
         setLoading(false);
       }
@@ -75,12 +64,11 @@ export default function ProjectVaultPage() {
     fetchProjectDetails();
   }, [projectId]);
 
-  const handleUploadComplete = (_newFile: FileRecord) => {
-    // Increments refreshTrigger to immediately re-query public.files for this projectId
+  const handleUploadComplete = () => {
     setRefreshTrigger((prev) => prev + 1);
   };
 
-  const handleDeleteSuccess = (_fileId: string) => {
+  const handleDeleteSuccess = () => {
     setRefreshTrigger((prev) => prev + 1);
     setSelectedFileToDelete(null);
   };
@@ -94,7 +82,28 @@ export default function ProjectVaultPage() {
     );
   }
 
-  const projectName = project?.name || 'Client Vault';
+  if (!project && !loading) {
+    return (
+      <div className="max-w-2xl mx-auto py-16 px-6 text-center font-sans">
+        <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 mx-auto mb-3">
+          <FolderOpen className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-900 mb-1">Project Vault Not Found</h2>
+        <p className="text-xs text-slate-500 mb-6">
+          The requested project vault could not be found or you do not have permission to access it under Row Level Security.
+        </p>
+        <Link
+          href="/dashboard/projects"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#0B1329] text-white text-xs font-semibold hover:bg-slate-800 transition-colors"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          <span>Back to Projects Directory</span>
+        </Link>
+      </div>
+    );
+  }
+
+  const projectName = project?.name || 'Project Vault';
   const clientName = project?.client_name || 'Client Partner';
 
   return (
@@ -134,7 +143,7 @@ export default function ProjectVaultPage() {
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => setIsInviteModalOpen(true)}
-            className="flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-xs transition-colors"
+            className="flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-xs transition-colors cursor-pointer"
           >
             <UserPlus className="w-4 h-4 text-sky-600" />
             <span>Invite Client</span>
@@ -142,7 +151,7 @@ export default function ProjectVaultPage() {
 
           <button
             onClick={() => setShowUploadZone((prev) => !prev)}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-[#0B1329] hover:bg-[#162447] rounded-lg shadow-xs transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-[#0B1329] hover:bg-[#162447] rounded-lg shadow-xs transition-colors cursor-pointer"
           >
             <UploadCloud className="w-4 h-4" />
             <span>{showUploadZone ? 'Hide Upload' : 'Upload Files'}</span>
@@ -180,13 +189,15 @@ export default function ProjectVaultPage() {
       )}
 
       {/* Client Invitation Modal */}
-      <InviteClientModal
-        projectId={projectId}
-        projectName={projectName}
-        clientName={clientName}
-        isOpen={isInviteModalOpen}
-        onClose={() => setIsInviteModalOpen(false)}
-      />
+      {isInviteModalOpen && (
+        <InviteClientModal
+          projectId={projectId}
+          projectName={projectName}
+          clientName={clientName}
+          isOpen={isInviteModalOpen}
+          onClose={() => setIsInviteModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
