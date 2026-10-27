@@ -79,25 +79,28 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onUploadSuccess, targetProje
 
       setProgress(80);
 
-      const fileId = `file_${Date.now()}_${uuidSlice}`;
+      const fileUuid = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : undefined;
+
       const { data: dbData, error: dbError } = await supabase
         .from('files')
         .insert({
-          id: fileId,
+          ...(fileUuid ? { id: fileUuid } : {}),
           project_id: activeProjectId,
-          user_id: user?.id || 'usr-freelancer-8472',
+          user_id: user?.id || '06ca1648-5870-4311-8345-a6b352d73c1b',
           name: file.name,
           size_bytes: file.size,
           mime_type: resolvedContentType,
           storage_path: storagePath,
           category: getCategory(file.name),
-          download_count: 0,
         })
         .select()
         .single();
 
       if (dbError) {
-        console.warn('DB notice:', dbError.message);
+        console.error('DB insert error:', dbError);
+        throw new Error(`Database error: ${dbError.message}`);
       }
 
       // Sync with VaultContext

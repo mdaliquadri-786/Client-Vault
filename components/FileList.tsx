@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   FileText,
   Image as ImageIcon,
@@ -15,6 +15,7 @@ import {
   Clock,
   ShieldCheck,
   AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { FileRecord } from '@/types/database';
@@ -34,42 +35,50 @@ export const FileList: React.FC<FileListProps> = ({
 }) => {
   const [files, setFiles] = useState<FileRecord[]>(initialFiles || []);
   const [loading, setLoading] = useState<boolean>(!initialFiles);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const fetchFiles = async () => {
-    setLoading(true);
+  const fetchFiles = useCallback(async (isManualRefresh = false) => {
+    if (isManualRefresh) {
+      setIsRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setErrorMessage(null);
+
     const supabase = createClient();
 
     try {
       let query = supabase.from('files').select('*');
-      if (projectId) {
+
+      if (projectId && projectId !== 'general') {
         query = query.eq('project_id', projectId);
       }
+
       const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) {
-        console.warn('Files fetch error:', error.message);
-        setErrorMessage('Unable to load vault files from database.');
+        console.error('Files query error:', error);
+        setErrorMessage(`Unable to fetch deliverables: ${error.message} (Code: ${error.code})`);
         setFiles([]);
       } else {
         setFiles((data as FileRecord[]) || []);
       }
     } catch (err: any) {
       console.error('Fetch files exception:', err);
-      setErrorMessage('Network or server error while loading deliverables.');
+      setErrorMessage(err?.message || 'Network or server error while loading deliverables.');
       setFiles([]);
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
-  };
+  }, [projectId]);
 
   useEffect(() => {
     fetchFiles();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, refreshTrigger]);
+  }, [fetchFiles, refreshTrigger]);
 
   const formatFileSize = (bytes: number): string => {
     if (!bytes || bytes === 0) return '0 B';
@@ -86,6 +95,8 @@ export const FileList: React.FC<FileListProps> = ({
         month: 'short',
         day: 'numeric',
         year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
       }).format(d);
     } catch {
       return 'Recently';
@@ -110,21 +121,12 @@ export const FileList: React.FC<FileListProps> = ({
     }
   };
 
-  /**
-   * Fix "Failed to load PDF" (Download Issue):
-   * Browsers crash when trying to preview PDFs in an inline tab without download headers.
-   * By passing { download: file.name } to createSignedUrl, Supabase sets:
-   * Content-Disposition: attachment; filename="<file.name>"
-   * Then dynamically creating an <a> element with href & download attributes guarantees
-   * an immediate, clean local file download without crashing the PDF viewer.
-   */
   const handleDownload = async (file: FileRecord) => {
     setDownloadingId(file.id);
     setDownloadNotice(null);
     const supabase = createClient();
 
     try {
-      // 1. Request signed URL from Supabase Storage with explicit download disposition
       const { data, error } = await supabase.storage
         .from('client-vault-files')
         .createSignedUrl(file.storage_path, 60, {
@@ -132,7 +134,6 @@ export const FileList: React.FC<FileListProps> = ({
         });
 
       if (error || !data?.signedUrl) {
-        // Fallback to getPublicUrl with download option
         const { data: publicData } = supabase.storage
           .from('client-vault-files')
           .getPublicUrl(file.storage_path, {
@@ -149,10 +150,9 @@ export const FileList: React.FC<FileListProps> = ({
           link.click();
           document.body.removeChild(link);
         } else {
-          throw new Error(error?.message || 'Download URL could not be generated.');
+          throw new Error(error?.message || 'Download signed URL could not be generated.');
         }
       } else {
-        // Dynamically create anchor element with download attribute
         const link = document.createElement('a');
         link.href = data.signedUrl;
         link.download = file.name;
@@ -167,8 +167,8 @@ export const FileList: React.FC<FileListProps> = ({
       setTimeout(() => setDownloadNotice(null), 4000);
     } catch (err: any) {
       console.error('Download error:', err);
-      setErrorMessage(`Failed to download "${file.name}". Please try again.`);
-      setTimeout(() => setErrorMessage(null), 4000);
+      setErrorMessage(`Failed to download "${file.name}": ${err?.message || 'Network error'}`);
+      setTimeout(() => setErrorMessage(null), 5000);
     } finally {
       setDownloadingId(null);
     }
@@ -176,45 +176,60 @@ export const FileList: React.FC<FileListProps> = ({
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden font-sans">
-      {/* Table Header Bar */}
-      <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+      <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-slate-900">Deliverables & Vault Files</h2>
           <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-mono font-medium">
             {files.length}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-slate-400">
-          <ShieldCheck className="w-3.5 h-3.5 text-sky-600" />
-          <span>PostgreSQL RLS Protected</span>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => fetchFiles(true)}
+            disabled={isRefreshing || loading}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+            title="Refresh Deliverables List"
+            aria-label="Refresh Deliverables List"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-sky-600' : ''}`} />
+            <span>{isRefreshing ? 'Refreshing...' : 'Sync'}</span>
+          </button>
+
+          <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="font-medium text-slate-600">PostgreSQL RLS Protected</span>
+          </div>
         </div>
       </div>
 
-      {/* Notifications */}
       {downloadNotice && (
         <div className="px-6 py-2.5 bg-emerald-50 border-b border-emerald-100 text-xs text-emerald-800 flex items-center justify-between">
           <span>{downloadNotice}</span>
-          <button onClick={() => setDownloadNotice(null)} className="text-emerald-600 hover:text-emerald-900">
+          <button onClick={() => setDownloadNotice(null)} className="text-emerald-600 hover:text-emerald-900 font-bold">
             &times;
           </button>
         </div>
       )}
 
       {errorMessage && (
-        <div className="px-6 py-2.5 bg-rose-50 border-b border-rose-100 text-xs text-rose-700 flex items-center gap-2">
-          <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-          <span>{errorMessage}</span>
+        <div className="px-6 py-2.5 bg-rose-50 border-b border-rose-100 text-xs text-rose-700 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+          <button onClick={() => setErrorMessage(null)} className="text-rose-600 hover:text-rose-900 font-bold">
+            &times;
+          </button>
         </div>
       )}
 
-      {/* Loading Indicator */}
       {loading ? (
         <div className="py-16 text-center flex flex-col items-center justify-center">
           <Loader2 className="w-6 h-6 text-sky-600 animate-spin mb-2" />
-          <p className="text-xs text-slate-500">Querying Supabase files...</p>
+          <p className="text-xs text-slate-500 font-medium">Querying Supabase files...</p>
         </div>
       ) : files.length === 0 ? (
-        /* Empty State with Exact Required Text */
         <div className="py-16 px-6 text-center flex flex-col items-center justify-center">
           <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 mb-3">
             <FolderOpen className="w-6 h-6" />
@@ -227,7 +242,6 @@ export const FileList: React.FC<FileListProps> = ({
           </p>
         </div>
       ) : (
-        /* Data Table */
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -245,7 +259,6 @@ export const FileList: React.FC<FileListProps> = ({
 
                 return (
                   <tr key={file.id} className="hover:bg-slate-50/80 transition-colors group">
-                    {/* File Name */}
                     <td className="py-3.5 px-6 font-medium text-slate-900">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-slate-100 rounded-lg border border-slate-200/80 shrink-0">
@@ -256,25 +269,22 @@ export const FileList: React.FC<FileListProps> = ({
                             {file.name}
                           </p>
                           <p className="text-[11px] text-slate-400 font-mono truncate">
-                            {file.mime_type || 'binary/octet-stream'}
+                            {file.mime_type || 'application/octet-stream'}
                           </p>
                         </div>
                       </div>
                     </td>
 
-                    {/* Size */}
                     <td className="py-3.5 px-6 font-mono text-slate-600 tabular-nums">
                       {formatFileSize(file.size_bytes)}
                     </td>
 
-                    {/* Category Badge */}
                     <td className="py-3.5 px-6">
                       <span className="capitalize px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200/60">
-                        {file.category || 'general'}
+                        {file.category || 'other'}
                       </span>
                     </td>
 
-                    {/* Date Uploaded */}
                     <td className="py-3.5 px-6 text-slate-500">
                       <div className="flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
@@ -282,7 +292,6 @@ export const FileList: React.FC<FileListProps> = ({
                       </div>
                     </td>
 
-                    {/* Actions */}
                     <td className="py-3.5 px-6 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         <button

@@ -72,11 +72,21 @@ export default function ProjectPortalPage() {
 
   const handleUploadComplete = () => {
     setRefreshTrigger((prev) => prev + 1);
+    try {
+      router.refresh();
+    } catch {
+      // safe fallback
+    }
   };
 
   const handleDeleteSuccess = () => {
     setRefreshTrigger((prev) => prev + 1);
     setSelectedFileToDelete(null);
+    try {
+      router.refresh();
+    } catch {
+      // safe fallback
+    }
   };
 
   if (loading) {

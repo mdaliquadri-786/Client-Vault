@@ -2,40 +2,54 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Dropzone } from '@/components/Dropzone';
 import { FileList } from '@/components/FileList';
 import { DeleteModal } from '@/components/DeleteModal';
 import { FileRecord } from '@/types/database';
 import { createClient } from '@/lib/supabase/client';
-import { UploadCloud, FolderKanban, ChevronRight } from 'lucide-react';
+import { UploadCloud, FolderKanban, ChevronRight, RefreshCw } from 'lucide-react';
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
   const [selectedFileToDelete, setSelectedFileToDelete] = useState<FileRecord | null>(null);
   const [showUploadZone, setShowUploadZone] = useState<boolean>(true);
-  const [activeProject, setActiveProject] = useState<string>('All Deliverables');
+  const [activeProjectId, setActiveProjectId] = useState<string>('');
+  const [activeProjectName, setActiveProjectName] = useState<string>('All Deliverables');
 
   useEffect(() => {
     const supabase = createClient();
     supabase
       .from('projects')
-      .select('name')
+      .select('id, name')
       .order('created_at', { ascending: false })
       .limit(1)
-      .then(({ data }) => {
-        if (data && data.length > 0) {
-          setActiveProject(data[0].name);
+      .then(({ data, error }) => {
+        if (!error && data && data.length > 0) {
+          setActiveProjectId(data[0].id);
+          setActiveProjectName(data[0].name);
         }
       });
   }, []);
 
-  const handleUploadComplete = () => {
+  const handleUploadComplete = (newFile: FileRecord) => {
     setRefreshTrigger((prev) => prev + 1);
+    try {
+      router.refresh();
+    } catch {
+      // safe fallback
+    }
   };
 
   const handleDeleteSuccess = () => {
     setRefreshTrigger((prev) => prev + 1);
     setSelectedFileToDelete(null);
+    try {
+      router.refresh();
+    } catch {
+      // safe fallback
+    }
   };
 
   return (
@@ -46,7 +60,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
             <span>ClientShare</span>
             <ChevronRight className="w-3 h-3 text-slate-400" />
-            <span className="font-medium text-slate-700">{activeProject}</span>
+            <span className="font-medium text-slate-700">{activeProjectName}</span>
           </div>
           <h1 className="text-xl font-bold tracking-tight text-slate-900">
             Client Deliverables & Files
@@ -80,8 +94,8 @@ export default function DashboardPage() {
       {showUploadZone && (
         <section aria-label="File Upload Dropzone" className="animate-in fade-in slide-in-from-top-2 duration-150">
           <Dropzone
-            projectId="general"
-            projectName={activeProject}
+            projectId={activeProjectId || undefined}
+            projectName={activeProjectName}
             onUploadComplete={handleUploadComplete}
           />
         </section>
@@ -90,6 +104,7 @@ export default function DashboardPage() {
       {/* Main Files Data Table */}
       <section aria-label="Uploaded Files Data Table">
         <FileList
+          projectId={activeProjectId || undefined}
           refreshTrigger={refreshTrigger}
           onDeleteRequest={(file) => setSelectedFileToDelete(file)}
         />
