@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   AlertCircle,
   RefreshCw,
+  Eye,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { FileRecord } from '@/types/database';
@@ -161,6 +162,16 @@ export const FileList: React.FC<FileListProps> = ({
           throw new Error('Downloaded file is 0 bytes. File may be corrupted or missing in storage.');
         }
 
+        // Verify PDF integrity to alert user if legacy plain-text mock was stored
+        if (file.name.toLowerCase().endsWith('.pdf')) {
+          const header = await blob.slice(0, 5).text();
+          if (!header.startsWith('%PDF')) {
+            throw new Error(
+              `The file "${file.name}" stored in the vault contains plain text instead of authentic PDF binary data. Please re-upload the real PDF.`
+            );
+          }
+        }
+
         const blobUrl = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = blobUrl;
@@ -176,6 +187,37 @@ export const FileList: React.FC<FileListProps> = ({
     } catch (err: any) {
       console.error('Download error:', err);
       setErrorMessage(`Failed to download "${file.name}": ${err?.message || 'Network error'}`);
+      setTimeout(() => setErrorMessage(null), 6000);
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const handlePreview = async (file: FileRecord) => {
+    setDownloadingId(file.id);
+    setDownloadNotice(`Loading preview for "${file.name}"...`);
+    setErrorMessage(null);
+    const supabase = createClient();
+
+    try {
+      const { data: blob, error } = await supabase.storage
+        .from('client-vault-files')
+        .download(file.storage_path);
+
+      if (error || !blob) {
+        throw new Error(error?.message || 'Could not fetch file preview');
+      }
+
+      const previewBlob = new Blob([blob], {
+        type: file.mime_type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'),
+      });
+      const blobUrl = URL.createObjectURL(previewBlob);
+      window.open(blobUrl, '_blank');
+      setDownloadNotice(null);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
+    } catch (err: any) {
+      console.error('Preview error:', err);
+      setErrorMessage(`Preview failed for "${file.name}": ${err?.message}`);
       setTimeout(() => setErrorMessage(null), 6000);
     } finally {
       setDownloadingId(null);
@@ -302,6 +344,18 @@ export const FileList: React.FC<FileListProps> = ({
 
                     <td className="py-3.5 px-6 text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        {(file.category === 'document' || file.category === 'image' || file.name.toLowerCase().endsWith('.pdf')) && (
+                          <button
+                            onClick={() => handlePreview(file)}
+                            disabled={isDownloading}
+                            className="p-1.5 text-slate-500 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors cursor-pointer"
+                            title="Preview Deliverable"
+                            aria-label={`Preview ${file.name}`}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        )}
+
                         <button
                           onClick={() => handleDownload(file)}
                           disabled={isDownloading}
