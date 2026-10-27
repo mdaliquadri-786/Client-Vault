@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, ChevronDown, User, Shield, LogOut } from 'lucide-react';
+import { Search, ChevronDown, Shield, LogOut } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 interface HeaderProps {
@@ -17,7 +17,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
   const [userName, setUserName] = useState<string>('Account');
-  const [userInitials, setUserInitials] = useState<string>('CV');
+  const [userInitials, setUserInitials] = useState<string>('CS');
 
   useEffect(() => {
     const supabase = createClient();
@@ -32,7 +32,7 @@ export const Header: React.FC<HeaderProps> = ({
           .map((n) => n[0])
           .join('')
           .toUpperCase()
-          .slice(0, 2) || email.slice(0, 2).toUpperCase() || 'CV';
+          .slice(0, 2) || email.slice(0, 2).toUpperCase() || 'CS';
         setUserInitials(initials);
       }
     });
@@ -62,7 +62,7 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between shrink-0 font-sans z-10">
       {/* Breadcrumbs Trail */}
       <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs">
-        <span className="font-semibold text-slate-800 tracking-tight">ClientVault</span>
+        <span className="font-semibold text-slate-800 tracking-tight">ClientShare</span>
         <span className="text-slate-300">/</span>
         <span className="font-medium text-slate-600">{projectName}</span>
         <span className="text-slate-300">/</span>

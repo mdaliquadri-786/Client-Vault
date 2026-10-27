@@ -85,7 +85,7 @@ export default function ProjectsPage() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-sky-600 bg-sky-50 px-2 py-0.5 rounded border border-sky-100">
-              Client Vaults
+              ClientShare Vaults
             </span>
             <span className="text-xs text-slate-400">/</span>
             <span className="text-xs text-slate-500 font-medium">Directory</span>

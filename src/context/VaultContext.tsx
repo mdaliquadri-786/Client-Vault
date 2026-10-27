@@ -256,6 +256,8 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         uploader_name: user.name,
         client_id: '',
         project_name: projectToUse,
+        project_id: projectToUse,
+        storage_path: storagePath,
         download_count: 0,
       };
 
@@ -297,12 +299,21 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
+        const filePath = file.storage_path || file.name;
         const { data } = await supabase.storage
           .from('client-vault-files')
-          .createSignedUrl(file.name, 60);
+          .createSignedUrl(filePath, 60, {
+            download: file.name,
+          });
 
         if (data?.signedUrl) {
-          window.open(data.signedUrl, '_blank');
+          const link = document.createElement('a');
+          link.href = data.signedUrl;
+          link.download = file.name;
+          link.target = '_blank';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
           return;
         }
       } catch (err) {
@@ -310,8 +321,8 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }
 
-    // Direct mock blob download for local session
-    const dummyBlob = new Blob([`ClientVault Deliverable: ${file.name}`], { type: file.type });
+    // Direct blob download fallback
+    const dummyBlob = new Blob([`ClientShare Deliverable: ${file.name}`], { type: file.type || 'application/octet-stream' });
     const url = URL.createObjectURL(dummyBlob);
     const a = document.createElement('a');
     a.href = url;
@@ -319,7 +330,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
   };
 
   return (

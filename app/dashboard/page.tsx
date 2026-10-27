@@ -44,7 +44,7 @@ export default function DashboardPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-200/80">
         <div>
           <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-            <span>Client Vault</span>
+            <span>ClientShare</span>
             <ChevronRight className="w-3 h-3 text-slate-400" />
             <span className="font-medium text-slate-700">{activeProject}</span>
           </div>
@@ -80,6 +80,7 @@ export default function DashboardPage() {
       {showUploadZone && (
         <section aria-label="File Upload Dropzone" className="animate-in fade-in slide-in-from-top-2 duration-150">
           <Dropzone
+            projectId="general"
             projectName={activeProject}
             onUploadComplete={handleUploadComplete}
           />

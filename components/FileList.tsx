@@ -68,6 +68,7 @@ export const FileList: React.FC<FileListProps> = ({
 
   useEffect(() => {
     fetchFiles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, refreshTrigger]);
 
   const formatFileSize = (bytes: number): string => {
@@ -102,39 +103,61 @@ export const FileList: React.FC<FileListProps> = ({
       case 'archive':
         return <Archive className="w-4 h-4 text-amber-600 shrink-0" />;
       case 'video':
+      case 'media':
         return <Film className="w-4 h-4 text-rose-600 shrink-0" />;
       default:
         return <File className="w-4 h-4 text-slate-500 shrink-0" />;
     }
   };
 
+  /**
+   * Fix "Failed to load PDF" (Download Issue):
+   * Browsers crash when trying to preview PDFs in an inline tab without download headers.
+   * By passing { download: file.name } to createSignedUrl, Supabase sets:
+   * Content-Disposition: attachment; filename="<file.name>"
+   * Then dynamically creating an <a> element with href & download attributes guarantees
+   * an immediate, clean local file download without crashing the PDF viewer.
+   */
   const handleDownload = async (file: FileRecord) => {
     setDownloadingId(file.id);
     setDownloadNotice(null);
     const supabase = createClient();
 
     try {
-      // 1. Generate a secure, time-limited signed download URL from Supabase Storage bucket
+      // 1. Request signed URL from Supabase Storage with explicit download disposition
       const { data, error } = await supabase.storage
         .from('client-vault-files')
-        .createSignedUrl(file.storage_path, 60);
+        .createSignedUrl(file.storage_path, 60, {
+          download: file.name,
+        });
 
       if (error || !data?.signedUrl) {
-        // Fallback to public URL if signed URL creation encounters bucket policy constraints
+        // Fallback to getPublicUrl with download option
         const { data: publicData } = supabase.storage
           .from('client-vault-files')
-          .getPublicUrl(file.storage_path);
+          .getPublicUrl(file.storage_path, {
+            download: file.name,
+          });
 
         if (publicData?.publicUrl) {
-          window.open(publicData.publicUrl, '_blank');
+          const link = document.createElement('a');
+          link.href = publicData.publicUrl;
+          link.download = file.name;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
         } else {
           throw new Error(error?.message || 'Download URL could not be generated.');
         }
       } else {
+        // Dynamically create anchor element with download attribute
         const link = document.createElement('a');
         link.href = data.signedUrl;
         link.download = file.name;
         link.target = '_blank';
+        link.rel = 'noopener noreferrer';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);

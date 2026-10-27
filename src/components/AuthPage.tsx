@@ -66,7 +66,7 @@ export const AuthPage: React.FC = () => {
       if (!res.success) {
         setError(res.error || 'Failed to create account.');
       } else {
-        setSuccessMessage('Account created successfully! Welcome to ClientVault.');
+        setSuccessMessage('Account created successfully! Welcome to ClientShare.');
       }
     } else {
       const res = await login(cleanEmail, cleanPassword);
@@ -84,7 +84,7 @@ export const AuthPage: React.FC = () => {
           <FolderLock className="w-6 h-6" />
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-          ClientVault
+          ClientShare
         </h1>
         <p className="mt-1 text-xs text-slate-500">
           Industrial-grade client file portal with Row Level Security & Google OAuth

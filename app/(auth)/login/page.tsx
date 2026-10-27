@@ -158,7 +158,7 @@ export default function LoginPage() {
         <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#0B1329] text-sky-400 mb-4 shadow-sm border border-slate-800">
           <FolderLock className="w-6 h-6" />
         </div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">ClientVault</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">ClientShare</h1>
         <p className="mt-1 text-xs text-slate-500">
           Secure client file portal with Row Level Security & Cloud Storage
         </p>
@@ -264,7 +264,6 @@ export default function LoginPage() {
           <form
             className="mt-6 space-y-4"
             onSubmit={handleSubmit}
-            action="javascript:void(0);"
             noValidate
           >
             {isSignUp && (
@@ -321,8 +320,7 @@ export default function LoginPage() {
             </div>
 
             <button
-              type="button"
-              onClick={handleSubmit}
+              type="submit"
               disabled={loading || oauthLoading}
               className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-[#0B1329] text-white text-xs font-semibold hover:bg-[#162347] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 shadow-sm transition-all disabled:opacity-60 cursor-pointer"
             >
@@ -330,7 +328,7 @@ export default function LoginPage() {
                 <Loader2 className="w-4 h-4 animate-spin text-white" />
               ) : (
                 <>
-                  <span>{isSignUp ? 'Create Vault Account' : 'Sign In to Portal'}</span>
+                  <span>{isSignUp ? 'Create ClientShare Account' : 'Sign In to ClientShare'}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </>
               )}

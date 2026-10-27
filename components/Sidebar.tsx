@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import {
   FolderLock,
   LayoutDashboard,
@@ -12,7 +12,6 @@ import {
   LogOut,
   ShieldCheck,
   ChevronRight,
-  Loader2,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -26,11 +25,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onNavigate,
 }) => {
   const pathname = usePathname();
-  const router = useRouter();
 
   const [userEmail, setUserEmail] = useState<string>('');
   const [userName, setUserName] = useState<string>('Account');
-  const [userInitials, setUserInitials] = useState<string>('CV');
+  const [userInitials, setUserInitials] = useState<string>('CS');
   const [usedBytes, setUsedBytes] = useState<number>(0);
   const [isLoadingStorage, setIsLoadingStorage] = useState<boolean>(true);
 
@@ -46,7 +44,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       if (!isMounted) return;
       if (user) {
         const email = user.email || '';
-        const name = (user.user_metadata?.full_name as string) || email.split('@')[0] || 'Vault User';
+        const name = (user.user_metadata?.full_name as string) || email.split('@')[0] || 'ClientShare User';
         setUserEmail(email);
         setUserName(name);
 
@@ -55,10 +53,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           .map((n) => n[0])
           .join('')
           .toUpperCase()
-          .slice(0, 2) || email.slice(0, 2).toUpperCase() || 'CV';
+          .slice(0, 2) || email.slice(0, 2).toUpperCase() || 'CS';
         setUserInitials(initials);
 
-        // 2. Fetch real sum of size_bytes from public.files for the logged-in user
+        // 2. Fetch real sum of size_bytes from public.files
         supabase
           .from('files')
           .select('size_bytes')
@@ -102,7 +100,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const percentUsed = Math.min(100, Math.round((usedBytes / maxBytes) * 100));
 
-  // Determine active route state
   const isDashboardActive = activeItem === 'dashboard' || pathname === '/dashboard';
   const isProjectsActive = activeItem === 'projects' || pathname?.startsWith('/dashboard/projects');
   const isSettingsActive = activeItem === 'settings' || pathname === '/dashboard/settings';
@@ -120,10 +117,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           <div>
             <span className="font-semibold text-white tracking-tight text-base font-sans block leading-none">
-              ClientVault
+              ClientShare
             </span>
             <span className="text-[10px] uppercase font-medium tracking-wider text-slate-400 mt-1 block">
-              Secure File Portal
+              Secure Client Portal
             </span>
           </div>
         </div>
@@ -194,7 +191,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </Link>
       </nav>
 
-      {/* Dynamic Storage Meter (Real Sum of size_bytes from public.files) */}
+      {/* Dynamic Storage Meter */}
       <div className="p-4 mx-3 mb-3 bg-[#111a33] rounded-xl border border-slate-800/90 text-xs">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2 text-slate-200 font-medium">
@@ -233,8 +230,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <button
           onClick={handleSignOut}
           className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800/80 rounded-lg transition-colors shrink-0 cursor-pointer"
-          title="Sign Out of ClientVault"
-          aria-label="Sign Out of ClientVault"
+          title="Sign Out of ClientShare"
+          aria-label="Sign Out of ClientShare"
         >
           <LogOut className="w-4 h-4" />
         </button>

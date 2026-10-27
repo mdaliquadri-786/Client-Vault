@@ -41,7 +41,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           <div>
             <span className="font-semibold text-white tracking-tight text-base font-sans block leading-none">
-              ClientVault
+              ClientShare
             </span>
             <span className="block text-[10px] uppercase font-medium tracking-wider text-slate-400 mt-1">
               Secure File Portal
@@ -158,8 +158,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <button
           onClick={logout}
           className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800/80 rounded-lg transition-colors cursor-pointer"
-          title="Sign out of ClientVault"
-          aria-label="Sign out of ClientVault"
+          title="Sign out of ClientShare"
+          aria-label="Sign out of ClientShare"
         >
           <LogOut className="w-4 h-4" />
         </button>

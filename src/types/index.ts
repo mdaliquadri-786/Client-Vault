@@ -8,7 +8,7 @@ export interface VaultUser {
 }
 
 export interface Project {
-  id: string;
+  id: string; // TEXT primary key
   name: string;
   client_name: string;
   owner_id: string;
@@ -20,8 +20,8 @@ export interface Project {
 }
 
 export interface ProjectMember {
-  id: string;
-  project_id: string;
+  id: string; // TEXT primary key
+  project_id: string; // TEXT foreign key
   user_id?: string | null;
   email: string;
   role: 'client' | 'reviewer' | 'admin';
@@ -32,16 +32,16 @@ export interface ProjectMember {
 }
 
 export interface VaultFile {
-  id: string;
-  project_id: string;
-  name: string;
+  id: string; // TEXT primary key
+  project_id?: string; // TEXT foreign key
+  name: string; // Full UTF-8 display name (Urdu, Arabic, etc.)
   size: number; // in bytes
-  type: string;
+  type: string; // MIME type
   category: 'document' | 'image' | 'archive' | 'design' | 'media' | 'other';
   uploaded_at: string;
   uploaded_by: string; // user id
   uploader_name: string;
-  client_id?: string; // for client-specific vault separation
+  client_id?: string;
   project_name?: string;
   storage_path?: string;
   url?: string;

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, FolderPlus, Building2, Mail, Loader2, Check } from 'lucide-react';
+import { X, FolderPlus, Building2, Mail, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { Project } from '@/types/database';
 
@@ -39,7 +39,8 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     try {
       const { data: { user } } = await supabase.auth.getUser();
       const ownerId = user?.id || 'usr-freelancer-8472';
-      const projectId = `proj-${Date.now().toString(36)}`;
+      // TEXT primary key (supports arbitrary alphanumeric string, slug, or ID)
+      const projectId = `proj_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 7)}`;
 
       // 1. Insert into public.projects table
       const { data, error: dbError } = await supabase
@@ -62,11 +63,12 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         await supabase
           .from('project_members')
           .insert({
+            id: `mem_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 7)}`,
             project_id: projectId,
             email: clientEmail.trim().toLowerCase(),
             role: 'client',
             status: 'pending',
-            invite_token: `inv_${Date.now().toString(36)}`,
+            invite_token: `cs_inv_${Date.now().toString(36)}`,
           });
       }
 
@@ -110,7 +112,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 Create New Client Project
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Set up an isolated vault for a new client partnership.
+                Set up an isolated vault in ClientShare for a new client partnership.
               </p>
             </div>
           </div>
@@ -197,9 +199,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                   <span>Creating Vault...</span>
                 </>
               ) : (
-                <>
-                  <span>Create Project</span>
-                </>
+                <span>Create Project</span>
               )}
             </button>
           </div>

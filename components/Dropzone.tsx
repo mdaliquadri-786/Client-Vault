@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { UploadCloud, CheckCircle2, AlertCircle, Loader2, FileUp } from 'lucide-react';
+import { UploadCloud, AlertCircle, Loader2, FileUp } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { FileRecord } from '@/types/database';
 
@@ -11,11 +11,11 @@ interface DropzoneProps {
   onUploadComplete?: (newFile: FileRecord) => void;
 }
 
-const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB limit
+const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB limit
 
 export const Dropzone: React.FC<DropzoneProps> = ({
   projectId,
-  projectName = 'Client Vault',
+  projectName = 'ClientShare Vault',
   onUploadComplete,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -28,20 +28,20 @@ export const Dropzone: React.FC<DropzoneProps> = ({
   const getCategory = (filename: string): FileRecord['category'] => {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
     if (['fig', 'sketch', 'xd', 'ai', 'psd'].includes(ext)) return 'design';
-    if (['pdf', 'doc', 'docx', 'txt', 'csv'].includes(ext)) return 'document';
+    if (['pdf', 'doc', 'docx', 'txt', 'csv', 'xlsx'].includes(ext)) return 'document';
     if (['png', 'jpg', 'jpeg', 'webp', 'svg', 'gif'].includes(ext)) return 'image';
-    if (['zip', 'rar', 'tar', 'gz', '7z'].includes(ext)) return 'archive';
-    if (['mp4', 'mov', 'mp3', 'wav'].includes(ext)) return 'media';
+    if (['zip', 'rar', 'tar', 'gz', '7z', 'iso'].includes(ext)) return 'archive';
+    if (['mp4', 'mov', 'mp3', 'wav', 'webm'].includes(ext)) return 'media';
     return 'other';
   };
 
   const handleUpload = async (file: File) => {
     setErrorMessage(null);
 
-    // 1. Client-Side Size Validation (Max 50 MB)
+    // 1. Client-Side Size Validation (Max 100 MB)
     if (file.size > MAX_FILE_SIZE_BYTES) {
       setErrorMessage(
-        `File size (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds maximum permitted limit of 50 MB.`
+        `File size (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds maximum permitted limit of 100 MB.`
       );
       return;
     }
@@ -59,13 +59,26 @@ export const Dropzone: React.FC<DropzoneProps> = ({
 
     try {
       // 2. Fetch authenticated user ID
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       const userId = user?.id || 'usr-freelancer-8472';
 
-      // 3. Structured storage folder convention: [projectId]/[fileId]_[filename]
-      const fileId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `f-${Date.now()}`;
-      const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const storagePath = `${projectId}/${fileId}_${safeFileName}`;
+      // 3. Generate ASCII-safe storage object key path for S3 bucket
+      // Preserves original UTF-8 filename (including Urdu, Arabic, Hindi, accents) in the database,
+      // while avoiding S3 "Invalid Key" errors.
+      const nameParts = file.name.split('.');
+      const rawExt = nameParts.length > 1 ? nameParts.pop() : '';
+      const safeExt = rawExt?.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'bin';
+      
+      const uuidSlice = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID().slice(0, 8)
+        : Math.random().toString(36).substring(2, 10);
+      
+      const asciiStorageKey = `${Date.now()}_${uuidSlice}.${safeExt}`;
+      const safeProjectFolder = projectId.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storagePath = `${safeProjectFolder}/${asciiStorageKey}`;
+
+      // Secure fallback MIME type (supports .exe, .zip, and any arbitrary binaries)
+      const resolvedContentType = file.type || 'application/octet-stream';
 
       setUploadProgress(40);
       setStatusMessage('Streaming physical binary to private bucket: client-vault-files...');
@@ -76,25 +89,26 @@ export const Dropzone: React.FC<DropzoneProps> = ({
         .upload(storagePath, file, {
           cacheControl: '3600',
           upsert: false,
-          contentType: file.type || 'application/octet-stream',
+          contentType: resolvedContentType,
         });
 
       if (storageError) {
-        // Fallback message if storage bucket policies need configuration
         console.warn('Supabase storage upload notice:', storageError.message);
       }
 
       setUploadProgress(75);
       setStatusMessage('Saving metadata record into public.files PostgreSQL table...');
 
-      // 5. Insert metadata record into public.files
-      const newFilePayload = {
+      // 5. Insert metadata record into public.files table
+      // Note: id and project_id are TEXT strings; file.name retains full UTF-8 characters
+      const fileId = `file_${Date.now()}_${uuidSlice}`;
+      const newFilePayload: Omit<FileRecord, 'created_at' | 'updated_at'> = {
         id: fileId,
         project_id: projectId,
         user_id: userId,
-        name: file.name,
+        name: file.name, // Real UTF-8 display name preserved
         size_bytes: file.size,
-        mime_type: file.type || 'application/octet-stream',
+        mime_type: resolvedContentType,
         storage_path: storagePath,
         category: getCategory(file.name),
         download_count: 0,
@@ -111,7 +125,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
       }
 
       setUploadProgress(100);
-      setStatusMessage('File securely stored in vault!');
+      setStatusMessage('File securely stored in ClientShare!');
 
       const finalRecord: FileRecord = (dbData as FileRecord) || {
         ...newFilePayload,
@@ -127,7 +141,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
         setIsUploading(false);
         setUploadProgress(0);
         setStatusMessage(null);
-      }, 1200);
+      }, 1000);
     } catch (err: any) {
       console.error('File upload exception:', err);
       setErrorMessage(err?.message || 'Failed to upload deliverable to vault.');
@@ -186,6 +200,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
         }}
         aria-label="Drag and drop file upload zone"
       >
+        {/* Hidden input deliberately has NO accept attribute to permit .exe, .zip, etc. */}
         <input
           ref={fileInputRef}
           type="file"
@@ -221,7 +236,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
         <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono">
           <span>Bucket: client-vault-files</span>
           <span>·</span>
-          <span>Max File Size: 50 MB</span>
+          <span>All File Types Supported (.exe, .zip, etc.)</span>
         </div>
       </div>
 

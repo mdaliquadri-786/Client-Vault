@@ -1,5 +1,5 @@
 export interface Project {
-  id: string;
+  id: string; // TEXT primary key supporting arbitrary text/slug IDs
   name: string;
   client_name: string;
   owner_id: string;
@@ -10,8 +10,8 @@ export interface Project {
 }
 
 export interface ProjectMember {
-  id: string;
-  project_id: string;
+  id: string; // TEXT primary key
+  project_id: string; // TEXT foreign key
   user_id?: string | null;
   email: string;
   role: 'client' | 'reviewer' | 'admin';
@@ -22,12 +22,12 @@ export interface ProjectMember {
 }
 
 export interface FileRecord {
-  id: string;
-  project_id: string;
+  id: string; // TEXT primary key
+  project_id: string; // TEXT foreign key
   user_id: string;
   client_id?: string | null;
-  name: string;
-  storage_path: string;
+  name: string; // Full UTF-8 display filename (supports Arabic, Urdu, special chars)
+  storage_path: string; // ASCII-safe sanitized storage path for S3 bucket
   size_bytes: number;
   mime_type: string;
   category: 'document' | 'image' | 'archive' | 'design' | 'media' | 'other';
@@ -38,5 +38,6 @@ export interface FileRecord {
 }
 
 export type FileInsert = Omit<FileRecord, 'id' | 'created_at' | 'updated_at' | 'download_count'> & {
+  id?: string;
   download_count?: number;
 };

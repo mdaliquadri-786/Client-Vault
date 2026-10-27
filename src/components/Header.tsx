@@ -18,7 +18,7 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between shrink-0 font-sans select-none">
       {/* Breadcrumb Trail */}
       <div className="flex items-center gap-2 text-xs">
-        <span className="font-semibold text-slate-800 tracking-tight">ClientVault</span>
+        <span className="font-semibold text-slate-800 tracking-tight">ClientShare</span>
         <span className="text-slate-300">/</span>
         <span className="font-medium text-slate-700">{selectedProject}</span>
         <span className="text-slate-300">/</span>

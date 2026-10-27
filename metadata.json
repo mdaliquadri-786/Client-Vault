@@ -1,5 +1,5 @@
 {
-  "name": "ClientVault - Secure Client File Portal",
+  "name": "ClientShare - Secure Client File Portal",
   "description": "Industrial-grade secure client file portal for freelancers and designers with Supabase Auth, PostgreSQL RLS, and encrypted file management.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

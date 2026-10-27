@@ -46,7 +46,7 @@ export const DeleteModal: React.FC<DeleteModalProps> = ({
 
     try {
       // 1. Remove the physical binary from Supabase Storage
-      const { data: storageData, error: storageError } = await supabase.storage
+      const { error: storageError } = await supabase.storage
         .from('client-vault-files')
         .remove([file.storage_path]);
 

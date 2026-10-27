@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 /**
- * Next.js Edge Middleware for ClientVault
+ * Next.js Edge Middleware for ClientShare
  * 
  * Protects `/dashboard/*` routes from unauthenticated users and refreshes
  * the Supabase Auth session token seamlessly in Next.js Server Components.
