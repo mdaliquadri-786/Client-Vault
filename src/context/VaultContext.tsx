@@ -300,6 +300,24 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (supabase) {
       try {
         const filePath = file.storage_path || file.name;
+        // Direct storage download returns genuine binary blob
+        const { data: blob, error: dlErr } = await supabase.storage
+          .from('client-vault-files')
+          .download(filePath);
+
+        if (!dlErr && blob && blob.size > 0) {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = file.name;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+          return;
+        }
+
+        // Signed URL fallback
         const { data } = await supabase.storage
           .from('client-vault-files')
           .createSignedUrl(filePath, 60, {
@@ -310,27 +328,15 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const link = document.createElement('a');
           link.href = data.signedUrl;
           link.download = file.name;
-          link.target = '_blank';
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
           return;
         }
       } catch (err) {
-        console.warn('Signed URL generation notice:', err);
+        console.warn('Storage download notice:', err);
       }
     }
-
-    // Direct blob download fallback
-    const dummyBlob = new Blob([`ClientShare Deliverable: ${file.name}`], { type: file.type || 'application/octet-stream' });
-    const url = URL.createObjectURL(dummyBlob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = file.name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
   };
 
   return (

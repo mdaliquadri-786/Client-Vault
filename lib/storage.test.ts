@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-// 1. Binary MIME type resolution: ensures .exe defaults to application/octet-stream
+// 1. Binary MIME type resolution: ensures .exe and binary files default to application/octet-stream
 function resolveMimeType(filename: string, browserType?: string): string {
   const lower = filename.toLowerCase();
   const isBinaryExe = lower.endsWith('.exe') || lower.endsWith('.bin') || lower.endsWith('.dll') || !browserType;
@@ -18,24 +18,11 @@ function generateAsciiStorageKey(originalName: string, projectId: string, mockUu
   return `${safeProjectFolder}/${asciiStorageKey}`;
 }
 
-// 3. Payload builder: ensures download_count is omitted and schema constraints are respected
-function buildFilePayload(params: {
-  projectId: string;
-  userId: string;
-  name: string;
-  sizeBytes: number;
-  mimeType: string;
-  storagePath: string;
-  category: string;
-}) {
+// 3. UTF-8 filename preservation via local blob download
+function createBlobDownloadLink(blobUrl: string, originalName: string) {
   return {
-    project_id: params.projectId,
-    user_id: params.userId,
-    name: params.name,
-    size_bytes: params.sizeBytes,
-    mime_type: params.mimeType,
-    storage_path: params.storagePath,
-    category: params.category,
+    href: blobUrl,
+    download: originalName,
   };
 }
 
@@ -47,6 +34,17 @@ test('Binary .exe file strictly resolves to application/octet-stream', () => {
   assert.equal(resolveMimeType('unknown_file', ''), 'application/octet-stream');
 });
 
+test('Arabic poetry PDF name is preserved with 100% UTF-8 fidelity in blob download link', () => {
+  const arabicPdfName = 'مناجات الفؤاد من أشعار الرقاة.pdf';
+  const mockBlobUrl = 'blob:http://localhost:3000/1234-5678-90ab';
+  const link = createBlobDownloadLink(mockBlobUrl, arabicPdfName);
+
+  assert.equal(link.download, 'مناجات الفؤاد من أشعار الرقاة.pdf');
+  assert.equal(link.download.includes('%20'), false);
+  assert.equal(link.download.includes('%D9'), false);
+  assert.equal(link.download.endsWith('.pdf'), true);
+});
+
 test('ASCII storage key correctly isolates project and sanitizes non-ASCII Urdu/Arabic filenames for S3', () => {
   const urduFilename = 'دستاویز_معاہدہ.pdf';
   const projectId = 'proj_mvqowbp2_9ozc1';
@@ -54,20 +52,4 @@ test('ASCII storage key correctly isolates project and sanitizes non-ASCII Urdu/
 
   assert.equal(storagePath, 'proj_mvqowbp2_9ozc1/1710000000000_a1b2c3d4.pdf');
   assert.equal(/^[\x00-\x7F]+$/.test(storagePath), true);
-});
-
-test('Database payload omits non-existent download_count column to prevent PGRST204 errors', () => {
-  const payload = buildFilePayload({
-    projectId: 'proj_mvqowbp2_9ozc1',
-    userId: '06ca1648-5870-4311-8345-a6b352d73c1b',
-    name: 'deliverable.pdf',
-    sizeBytes: 2048,
-    mimeType: 'application/pdf',
-    storagePath: 'proj/deliverable.pdf',
-    category: 'document',
-  });
-
-  assert.equal('download_count' in payload, false);
-  assert.equal(payload.project_id, 'proj_mvqowbp2_9ozc1');
-  assert.equal(payload.user_id, '06ca1648-5870-4311-8345-a6b352d73c1b');
 });

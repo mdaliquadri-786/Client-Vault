@@ -159,23 +159,37 @@ export const Dropzone: React.FC<DropzoneProps> = ({
         ? 'application/octet-stream'
         : (file.type || 'application/octet-stream');
 
-      setUploadProgress(50);
+      setUploadProgress(45);
       setStatusMessage(`Streaming binary directly to bucket: client-vault-files...`);
 
       // 4. Direct Client-to-Supabase Storage Upload (bypasses 4.5MB Vercel serverless limit)
-      const { error: storageError } = await supabase.storage
-        .from('client-vault-files')
-        .upload(storagePath, file, {
-          cacheControl: '3600',
-          upsert: true,
-          contentType: resolvedContentType,
-        });
+      // Active progress simulation while binary payload streams over network:
+      let dynamicProgress = 45;
+      const progressTimer = setInterval(() => {
+        dynamicProgress = Math.min(dynamicProgress + 5, 90);
+        setUploadProgress(dynamicProgress);
+        setStatusMessage(`Streaming binary to client-vault-files (${dynamicProgress}%)...`);
+      }, 350);
+
+      let storageError: any = null;
+      try {
+        const { error } = await supabase.storage
+          .from('client-vault-files')
+          .upload(storagePath, file, {
+            cacheControl: '3600',
+            upsert: true,
+            contentType: resolvedContentType,
+          });
+        storageError = error;
+      } finally {
+        clearInterval(progressTimer);
+      }
 
       if (storageError) {
         throw new Error(`Storage upload failed: ${storageError.message}`);
       }
 
-      setUploadProgress(75);
+      setUploadProgress(92);
       setStatusMessage('Recording deliverable in PostgreSQL files table...');
 
       // 5. Strict Database Insert

@@ -123,52 +123,60 @@ export const FileList: React.FC<FileListProps> = ({
 
   const handleDownload = async (file: FileRecord) => {
     setDownloadingId(file.id);
-    setDownloadNotice(null);
+    setDownloadNotice(`Fetching "${file.name}" securely from vault...`);
+    setErrorMessage(null);
     const supabase = createClient();
 
     try {
-      const { data, error } = await supabase.storage
+      // 1. Direct Blob Download (Fixes Arabic/Urdu Unicode filenames & executable blocks)
+      // By downloading binary directly via authenticated fetch and creating a local blob: URL,
+      // the browser uses link.download = file.name with 100% UTF-8 fidelity (no %hex mangling),
+      // and Chrome does NOT block executables (.exe) as suspicious cross-origin popup downloads.
+      const { data: blob, error: downloadError } = await supabase.storage
         .from('client-vault-files')
-        .createSignedUrl(file.storage_path, 60, {
-          download: file.name,
-        });
+        .download(file.storage_path);
 
-      if (error || !data?.signedUrl) {
-        const { data: publicData } = supabase.storage
+      if (downloadError || !blob) {
+        console.warn('Direct blob download notice, falling back to signed URL:', downloadError?.message);
+
+        // Fallback: Signed URL with explicit download parameter
+        const { data: signedData, error: signedError } = await supabase.storage
           .from('client-vault-files')
-          .getPublicUrl(file.storage_path, {
+          .createSignedUrl(file.storage_path, 60, {
             download: file.name,
           });
 
-        if (publicData?.publicUrl) {
-          const link = document.createElement('a');
-          link.href = publicData.publicUrl;
-          link.download = file.name;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        } else {
-          throw new Error(error?.message || 'Download signed URL could not be generated.');
+        if (signedError || !signedData?.signedUrl) {
+          throw new Error(downloadError?.message || signedError?.message || 'Unable to download file from storage.');
         }
-      } else {
+
         const link = document.createElement('a');
-        link.href = data.signedUrl;
+        link.href = signedData.signedUrl;
         link.download = file.name;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+      } else {
+        if (blob.size === 0) {
+          throw new Error('Downloaded file is 0 bytes. File may be corrupted or missing in storage.');
+        }
+
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = file.name; // Preserves complete UTF-8 Arabic, Urdu, and special character names
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
       }
 
-      setDownloadNotice(`Secure download started for "${file.name}"`);
+      setDownloadNotice(`Downloaded "${file.name}" successfully.`);
       setTimeout(() => setDownloadNotice(null), 4000);
     } catch (err: any) {
       console.error('Download error:', err);
       setErrorMessage(`Failed to download "${file.name}": ${err?.message || 'Network error'}`);
-      setTimeout(() => setErrorMessage(null), 5000);
+      setTimeout(() => setErrorMessage(null), 6000);
     } finally {
       setDownloadingId(null);
     }
