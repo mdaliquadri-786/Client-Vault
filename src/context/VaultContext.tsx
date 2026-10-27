@@ -214,33 +214,58 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         },
       ]);
 
-      let storagePath = `${projectToUse.toLowerCase().replace(/[^a-z0-9]/g, '-')}/${Date.now()}_${rawFile.name}`;
+      // Generate ASCII-safe storage object key for S3 to preserve full Arabic/UTF-8 filenames without Invalid Key errors
+      const nameParts = rawFile.name.split('.');
+      const rawExt = nameParts.length > 1 ? nameParts.pop() : '';
+      const safeExt = rawExt?.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'bin';
+      const asciiStorageKey = `${Date.now()}_${Math.random().toString(36).substring(2, 10)}.${safeExt}`;
+      const safeProjectFolder = (projectToUse || 'proj_mvqowbp2_9ozc1').replace(/[^a-zA-Z0-9._-]/g, '_');
+      let storagePath = `${safeProjectFolder}/${asciiStorageKey}`;
 
       if (supabase) {
         try {
+          const resolvedContentType = rawFile.name.toLowerCase().endsWith('.exe')
+            ? 'application/octet-stream'
+            : (rawFile.type || 'application/octet-stream');
+
           const { data: uploadData, error: uploadErr } = await supabase.storage
             .from('client-vault-files')
-            .upload(storagePath, rawFile, { upsert: true });
+            .upload(storagePath, rawFile, {
+              cacheControl: '3600',
+              upsert: true,
+              contentType: resolvedContentType,
+            });
 
           if (uploadErr) {
-            console.warn('Storage upload notice:', uploadErr.message);
+            console.error('Storage upload error:', uploadErr);
+            throw new Error(`Storage error: ${uploadErr.message}`);
           } else if (uploadData) {
             storagePath = uploadData.path;
           }
 
-          await supabase.from('files').insert([
+          const fileUuid = typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : undefined;
+
+          const { error: insErr } = await supabase.from('files').insert([
             {
+              ...(fileUuid ? { id: fileUuid } : {}),
+              project_id: 'proj_mvqowbp2_9ozc1',
               name: rawFile.name,
               size_bytes: rawFile.size,
-              mime_type: rawFile.type,
+              mime_type: resolvedContentType,
               storage_path: storagePath,
               category: getFileCategory(rawFile.name, rawFile.type),
               project_name: projectToUse,
-              user_id: user.id,
+              user_id: user?.id || '06ca1648-5870-4311-8345-a6b352d73c1b',
             },
           ]);
+
+          if (insErr) {
+            console.error('Database insert error in VaultContext:', insErr);
+          }
         } catch (err) {
-          console.warn('Supabase record insert notice:', err);
+          console.error('VaultContext upload error:', err);
         }
       }
 

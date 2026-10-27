@@ -103,9 +103,6 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onUploadSuccess, targetProje
         throw new Error(`Database error: ${dbError.message}`);
       }
 
-      // Sync with VaultContext
-      await uploadFiles([file], activeProjectId);
-
       setProgress(100);
       setSuccess(`"${file.name}" securely stored in ClientShare.`);
 
